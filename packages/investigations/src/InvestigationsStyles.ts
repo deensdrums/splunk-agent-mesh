@@ -1,21 +1,24 @@
 import styled from 'styled-components';
-import { variables, mixins } from '@splunk/themes';
+import { variables } from '@splunk/themes';
 
-const StyledContainer = styled.div`
-    ${mixins.reset('inline-block')};
-    font-size: ${variables.fontSizeLarge};
-    line-height: 200%;
-    margin: ${variables.spacingLarge} ${variables.spacingSmall};
-    padding: ${variables.spacingLarge} ${variables.spacingXXLarge};
-    border-radius: ${variables.borderRadius};
-    box-shadow: ${variables.overlayShadow};
-    background-color: ${variables.backgroundColorSection};
+export const StyledAppContainer = styled.div`
+    display: block;
+    padding: ${variables.spacingLarge};
 `;
 
-const StyledGreeting = styled.div`
-    font-weight: bold;
-    color: ${variables.brandColor};
-    font-size: ${variables.fontSizeXXLarge};
+export const StyledHeader = styled.h1`
+    font-size: 24px;
+    font-weight: ${variables.fontWeightBold};
+    color: ${variables.contentColorDefault};
+    margin: 0 0 4px 0;
 `;
 
-export { StyledContainer, StyledGreeting };
+export const StyledTagline = styled.p`
+    font-size: ${variables.fontSizeSmall};
+    color: ${variables.contentColorMuted};
+    margin: 0 0 ${variables.spacingMedium} 0;
+`;
+
+// Legacy exports retained for any existing references
+export const StyledContainer = StyledAppContainer;
+export const StyledGreeting = StyledHeader;

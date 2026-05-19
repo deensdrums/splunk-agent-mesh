@@ -1,0 +1,10 @@
+| Comment: Detects Office-spawned encoded PowerShell — T1059.001, T1027
+index=endpoint process_name=powershell.exe
+    (command_line="*-enc*" OR command_line="*EncodedCommand*" OR command_line="*-e *")
+    (parent_process_name=winword.exe OR parent_process_name=excel.exe
+     OR parent_process_name=outlook.exe OR parent_process_name=onenote.exe)
+| eval encoded=if(match(command_line, "-enc|-EncodedCommand"), "yes", "no")
+| stats count min(_time) as first_seen max(_time) as last_seen
+    by host user parent_process_name process_name command_line encoded
+| sort -count
+| rename first_seen as "First Seen", last_seen as "Last Seen"

@@ -1,30 +1,36 @@
 import React, { useState } from 'react';
-import Button from '@splunk/react-ui/Button';
+import TabLayout from '@splunk/react-ui/TabLayout';
+import { StyledAppContainer, StyledHeader, StyledTagline } from './InvestigationsStyles';
+import InvestigationPage from './pages/InvestigationPage';
+import SettingsPage from './pages/SettingsPage';
+import AboutPage from './pages/AboutPage';
 
-import { StyledContainer, StyledGreeting } from './InvestigationsStyles';
+type Tab = 'investigation' | 'settings' | 'about';
 
-const Investigations = () => {
-    const [counter, setCounter] = useState(0);
-
-    const message =
-        counter === 0
-            ? 'You should try clicking the button.'
-            : `You've clicked the button ${counter} time${counter > 1 ? 's' : ''}.`;
+const Investigations: React.FC = () => {
+    const [activeTab, setActiveTab] = useState<Tab>('investigation');
 
     return (
-        <StyledContainer>
-            <StyledGreeting data-testid="greeting">
-                Hello, from inside Investigations!
-            </StyledGreeting>
-            <div data-testid="message">{message}</div>
-            <Button
-                label="Click here"
-                appearance="primary"
-                onClick={() => {
-                    setCounter(counter + 1);
+        <StyledAppContainer>
+            <StyledHeader>Sentinel Mesh</StyledHeader>
+            <StyledTagline>From alert to evidence-backed response in minutes.</StyledTagline>
+            <TabLayout
+                activePanelId={activeTab}
+                onChange={(_e: unknown, { activePanelId }: { activePanelId?: string }) => {
+                    if (activePanelId) setActiveTab(activePanelId as Tab);
                 }}
-            />
-        </StyledContainer>
+            >
+                <TabLayout.Panel label="Investigation" panelId="investigation">
+                    <InvestigationPage />
+                </TabLayout.Panel>
+                <TabLayout.Panel label="Settings" panelId="settings">
+                    <SettingsPage />
+                </TabLayout.Panel>
+                <TabLayout.Panel label="About" panelId="about">
+                    <AboutPage />
+                </TabLayout.Panel>
+            </TabLayout>
+        </StyledAppContainer>
     );
 };
 

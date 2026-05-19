@@ -1,0 +1,5 @@
+_time,host,user,index,source,query,answer,record_type,first_seen_domain_days
+2026-05-18T09:17:03Z,FIN-LAPTOP-22,jsmith,dns,stream:dns,cdn-update-check.com,185.199.108.153,A,12
+2026-05-18T09:17:04Z,FIN-LAPTOP-22,jsmith,dns,stream:dns,cdn-update-check.com,185.199.108.153,A,12
+2026-05-18T09:18:00Z,FIN-LAPTOP-22,jsmith,dns,stream:dns,www.microsoft.com,20.112.52.29,A,1825
+2026-05-18T09:19:10Z,FIN-LAPTOP-22,jsmith,dns,stream:dns,ocsp.digicert.com,93.184.220.29,A,2190

@@ -1,0 +1,8 @@
+| Comment: Detects authentication to finance file servers from endpoints with recent suspicious activity — T1039
+index=wineventlog EventCode=4624 Logon_Type=3
+    dest IN (FIN-FILE-01, FIN-FILE-02, FIN-FILE-03, finance-share*)
+| lookup suspicious_hosts.csv host OUTPUTNEW is_suspicious
+| where is_suspicious="true"
+| stats count min(_time) as first_access max(_time) as last_access
+    by host user dest
+| sort -count

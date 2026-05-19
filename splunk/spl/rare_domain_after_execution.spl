@@ -1,0 +1,13 @@
+| Comment: Finds DNS queries to rare domains within 5 minutes of a PowerShell process event — T1105
+index=endpoint process_name=powershell.exe parent_process_name IN (winword.exe, excel.exe, outlook.exe)
+| eval ps_time=_time
+| join type=inner host [
+    search index=dns
+    | eval dns_time=_time
+    | table host query answer dns_time
+]
+| where dns_time > ps_time AND dns_time < ps_time + 300
+| lookup rare_domains.csv query OUTPUTNEW first_seen_days
+| where first_seen_days < 30 OR isnull(first_seen_days)
+| stats count by host user query answer first_seen_days
+| sort -count

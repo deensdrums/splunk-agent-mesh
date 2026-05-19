@@ -1,0 +1,5 @@
+_time,host,user,index,source,dest_ip,dest_port,bytes_out,bytes_in,url,http_method
+2026-05-18T09:44:39Z,FIN-LAPTOP-22,jsmith,proxy,stream:http,185.199.108.153,443,48593422,1024,https://185.199.108.153/upload,POST
+2026-05-18T09:18:30Z,FIN-LAPTOP-22,jsmith,proxy,stream:http,185.199.108.153,443,2048,102400,https://cdn-update-check.com/payload,GET
+2026-05-18T08:45:00Z,CORP-WS-01,jdoe,proxy,stream:http,172.217.14.196,443,51200,2097152,https://www.google.com/,GET
+2026-05-18T09:02:00Z,CORP-WS-02,asmith,proxy,stream:http,204.79.197.200,443,1024,512000,https://www.bing.com/,GET

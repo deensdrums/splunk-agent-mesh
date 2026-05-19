@@ -1,1 +1,3 @@
-<nav><view name="Investigations" default="true"/></nav>
+<nav>
+    <view name="Investigations" default="true" label="Sentinel Mesh"/>
+</nav>

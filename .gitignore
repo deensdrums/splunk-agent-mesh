@@ -1,0 +1,24 @@
+.DS_Store
+.idea/
+node_modules
+npm-debug.log
+test-reports
+coverage_report
+yarn-error.log
+licenses.json
+functional-temp
+splunktional-temp
+
+# Sentinel Mesh secrets and generated files
+server/.sentinel_mesh_settings.json
+server/__pycache__/
+server/**/__pycache__/
+server/**/*.pyc
+.env
+.env.local
+*.key
+*.pem
+SENTINEL_MESH_API_KEY
+stage/
+packages/*/stage/
+

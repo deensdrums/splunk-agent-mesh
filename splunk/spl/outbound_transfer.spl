@@ -1,0 +1,8 @@
+| Comment: Detects unusually large outbound data transfers — T1041
+index=proxy bytes_out > 10000000
+| eval mb_out=round(bytes_out/1024/1024, 2)
+| stats sum(mb_out) as total_mb count by host user dest_ip dest_port
+| where total_mb > 20
+| sort -total_mb
+| eval total_mb=total_mb . " MB"
+| rename total_mb as "Total Outbound", count as "Requests"

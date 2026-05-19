@@ -1,0 +1,6 @@
+_time,host,index,source,src_ip,dest_ip,dest_port,bytes_sent,action,app
+2026-05-18T09:44:41Z,FIN-LAPTOP-22,firewall,pan:traffic,10.10.20.45,185.199.108.153,443,48593422,allow,ssl
+2026-05-18T09:18:31Z,FIN-LAPTOP-22,firewall,pan:traffic,10.10.20.45,185.199.108.153,443,2048,allow,ssl
+2026-05-18T09:17:05Z,FIN-LAPTOP-22,firewall,pan:traffic,10.10.20.45,185.199.108.153,80,512,allow,web-browsing
+2026-05-18T08:55:00Z,CORP-WS-01,firewall,pan:traffic,10.10.10.10,8.8.8.8,53,128,allow,dns
+2026-05-18T09:05:00Z,CORP-WS-02,firewall,pan:traffic,10.10.10.15,8.8.4.4,53,128,allow,dns

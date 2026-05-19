@@ -1,0 +1,6 @@
+_time,host,user,index,source,dest_host,action,event_id,logon_type
+2026-05-18T09:35:44Z,FIN-LAPTOP-22,jsmith,wineventlog,XmlWinEventLog:Security,FIN-FILE-01,success,4624,3
+2026-05-18T09:36:01Z,FIN-LAPTOP-22,jsmith,wineventlog,XmlWinEventLog:Security,FIN-FILE-01,success,4624,3
+2026-05-18T09:36:55Z,FIN-LAPTOP-22,jsmith,wineventlog,XmlWinEventLog:Security,FIN-FILE-01,success,4624,3
+2026-05-18T08:30:00Z,CORP-WS-01,jdoe,wineventlog,XmlWinEventLog:Security,CORP-DC-01,success,4624,3
+2026-05-18T09:00:00Z,CORP-WS-02,asmith,wineventlog,XmlWinEventLog:Security,CORP-DC-01,success,4624,3

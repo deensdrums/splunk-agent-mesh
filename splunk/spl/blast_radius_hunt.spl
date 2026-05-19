@@ -1,0 +1,12 @@
+| Comment: Hunt for lateral movement from a known-compromised host — T1021
+| inputlookup compromised_hosts.csv
+| rename host as src_host
+| join type=inner src_host [
+    search index=wineventlog EventCode=4624 Logon_Type=3
+    | rename host as src_host, dest as dest_host
+    | table src_host dest_host user _time
+]
+| stats count min(_time) as first_seen dc(dest_host) as unique_targets
+    by src_host user
+| sort -count
+| rename count as "Auth Events", unique_targets as "Unique Targets Reached"

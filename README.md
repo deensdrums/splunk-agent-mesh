@@ -1,40 +1,191 @@
-# Contributing
+# Sentinel Mesh
 
-## Overview
+**From alert to evidence-backed response in minutes.**
 
-The project contains a variety of packages that are published and versioned collectively. Each package lives in its own 
-directory in the `/packages` directory. Each package is self contained, and defines its dependencies in a package.json file.
+Sentinel Mesh is an agentic SOC investigation copilot for Splunk. A SOC analyst describes an alert, clicks **Start Investigation**, and receives an evidence-backed report with MITRE ATT&CK mapping, blast radius analysis, response recommendations, and a reusable detection rule — powered by AI agents running against Splunk security data.
 
-We use [Yarn Workspaces](https://yarnpkg.com/lang/en/docs/workspaces/) for managing and publishing multiple packages in the same repository.
+---
 
+## Hackathon Track
 
-## Getting Started
+Security — Splunk Agentic Ops Hackathon 2026
 
-1. Clone the repo.
-2. Install yarn (>= 1.2) if you haven't already: `npm install --global yarn`.
-3. Run the setup task: `yarn run setup`.
+---
 
-After this step, the following tasks will be available:
+## Architecture
 
-* `start` – Run the `start` task for each project
-* `build` – Create a production bundle for all projects
-* `test` – Run unit tests for each project
-* `lint` – Run JS and CSS linters for each project
-* `format` – Run prettier to auto-format `*.js`, `*.jsx` and `*.css` files. This command will overwrite files without 
-asking, `format:verify` won't.
+```
+Browser (Splunk Web)
+  └── @splunk/ai-investigator  (Splunk app, single React page)
+        └── @splunk/investigations  (React component library)
+              ├── InvestigationPage  (main SOC console)
+              ├── SettingsPage       (LLM provider + secure API key)
+              └── AboutPage
 
-Running `yarn run setup` once is required to enable all other tasks. The command might take a few minutes to finish.
+FastAPI backend (server/sentinel_mesh/)
+  ├── Orchestrator → 7 specialized agents
+  ├── LLM providers (Anthropic / OpenRouter / OpenAI-compatible)
+  ├── Splunk search client
+  └── SettingsStore (dev: env var | production: Splunk Passwords API)
+```
 
+See `docs/ARCHITECTURE.md` for the full data flow diagram.
 
-## Developer Scripts
+---
 
-Commands run from the root directory will be applied to all packages. This is handy when working on multiple packages 
-simultaneously. Commands can also be run from individual packages. This may be better for performance and reporting when
- only working on a single package. All of the packages have similar developer scripts, but not all scripts are implemented 
- for every package. See the `package.json` of the package in question to see which scripts are available there.
+## Setup
 
+### Prerequisites
+- Node.js >= 22
+- Yarn >= 1.2
+- Python >= 3.11
 
-## Code Formatting
+### Frontend
 
-This project uses [prettier](https://github.com/prettier/prettier) to ensure consistent code formatting. It is recommended
- to [add a prettier plugin to your editor/ide](https://github.com/prettier/prettier#editor-integration).
+```bash
+yarn install
+yarn build
+```
+
+To develop with live reload:
+```bash
+yarn start    # runs webpack --watch on the ai-investigator package
+```
+
+### Backend
+
+```bash
+cd server
+pip install -r requirements.txt
+uvicorn sentinel_mesh.app:app --reload --port 8000
+```
+
+The backend will be available at `http://localhost:8000`. OpenAPI docs at `http://localhost:8000/docs`.
+
+---
+
+## Configure LLM Provider
+
+1. Open the Sentinel Mesh app in Splunk Web.
+2. Click the **Settings** tab.
+3. Select your LLM provider (Anthropic, OpenRouter, or custom).
+4. Enter your model name and API key.
+5. Click **Save**, then **Test Connection**.
+
+For local development only, you can also set:
+```bash
+export SENTINEL_MESH_API_KEY=your-key-here
+export SENTINEL_MESH_DEV_MODE=1   # allows local key persistence
+```
+
+**API keys are never stored in plaintext in the repo.** See `docs/SECURE_SETTINGS.md`.
+
+---
+
+## Credential Storage
+
+| Environment | Storage |
+|---|---|
+| Production (Splunk) | Splunk Passwords API (encrypted at rest) |
+| Local dev | `SENTINEL_MESH_API_KEY` env var |
+| Dev mode (explicit) | `.sentinel_mesh_settings.json` (gitignored) |
+
+The API key is never returned to the frontend. Settings responses show only `api_key_configured: true/false`.
+
+---
+
+## Demo Mode
+
+No API key or Splunk connection needed. Click **"Load Suspicious PowerShell Demo"** in the Investigation tab to run the built-in synthetic scenario:
+
+> User `jsmith` opens a suspicious Office document → `winword.exe` spawns encoded PowerShell → rare domain contacted → finance file server accessed → 48 MB exfiltrated.
+
+The demo returns a deterministic result showing the full investigation workflow.
+
+---
+
+## Load Sample Data into Splunk
+
+Sample event CSVs are in `packages/ai-investigator/src/main/resources/splunk/lookups/`.
+
+To index them:
+```splunk
+| inputlookup endpoint_events.csv | collect index=endpoint
+| inputlookup dns_events.csv | collect index=dns
+| inputlookup auth_events.csv | collect index=wineventlog
+| inputlookup proxy_events.csv | collect index=proxy
+| inputlookup firewall_events.csv | collect index=firewall
+```
+
+---
+
+## Repo Structure
+
+```
+packages/
+  investigations/        # React component library (@splunk/investigations)
+    src/
+      pages/             # InvestigationPage, SettingsPage, AboutPage
+      components/        # AgentRunPanel, Timeline, Evidence, etc.
+      services/          # apiClient.ts
+      demo/              # demoData.ts (static demo result)
+      types.ts           # TypeScript types
+  ai-investigator/       # Splunk app (@splunk/ai-investigator)
+    src/main/
+      webapp/pages/      # Webpack entry points
+      resources/splunk/  # Splunk app config, nav, views, lookups
+server/
+  sentinel_mesh/         # Python FastAPI backend
+    agents/              # 7 investigation agents
+    llm/                 # LLM provider adapters
+    demo/                # Static demo case + synthetic events
+    app.py               # FastAPI routes
+    settings_store.py    # Credential storage abstraction
+docs/                    # Project planning and architecture
+splunk/
+  spl/                   # Example SPL detection queries
+  config_examples/       # Splunk conf file examples
+```
+
+---
+
+## Known Limitations (MVP)
+
+- Demo mode only — real Splunk search integration requires a live Splunk instance and `SPLUNK_TOKEN` env var
+- LLM agents are deterministic stubs — LLM integration is wired but requires a configured API key and installed provider packages (`pip install anthropic` or `pip install openai`)
+- `SplunkSecureSettingsStore` methods are stubs — full Passwords API wiring is a next-session task
+- No investigation history — each run is stateless
+- Entity graph is a placeholder (D3/Cytoscape visualization planned for v2)
+
+---
+
+## Next Steps
+
+See `docs/TODO.md` for the full backlog. Immediate priorities:
+1. `yarn build` — verify frontend compiles with no TypeScript errors
+2. `uvicorn sentinel_mesh.app:app --reload` — verify backend starts
+3. Test the demo endpoint: `curl -X POST http://localhost:8000/api/v1/investigations/run -d '{"description":"test","demo":true}' -H 'Content-Type: application/json'`
+4. Wire `SplunkSecureSettingsStore` to real Splunk Passwords API
+5. Connect `splunk_client.py` to a real Splunk instance
+
+---
+
+## Continuation Notes
+
+See `docs/CONTINUATION_LOG.md` for session-by-session change history. Every coding session must append an entry to that file.
+
+---
+
+## Original Scaffold Notes
+
+This project was created with Splunk Create / `@splunk/create`. It is a Yarn workspace monorepo. Original scaffold README is preserved below.
+
+### Yarn Workspaces
+
+Use [Yarn Workspaces](https://yarnpkg.com/lang/en/docs/workspaces/) to manage packages.
+
+- `yarn run setup` — install deps and build all packages
+- `yarn run build` — production bundle
+- `yarn run test` — unit tests
+- `yarn run lint` — JS + CSS linting
+- `yarn run format` — auto-format with Prettier
