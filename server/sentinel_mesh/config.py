@@ -8,6 +8,10 @@ load_dotenv()
 # Set SENTINEL_MESH_DEV_MODE=1 to allow DevSettingsStore to accept keys.
 DEV_MODE: bool = os.getenv("SENTINEL_MESH_DEV_MODE", "0") == "1"
 
+# Set SENTINEL_MESH_USE_SPLUNK_STORE=1 to opt in to the (unimplemented) Splunk
+# Passwords-API-backed store. Until that store is wired up, leave this off.
+USE_SPLUNK_STORE: bool = os.getenv("SENTINEL_MESH_USE_SPLUNK_STORE", "0") == "1"
+
 # CORS origin(s) for the frontend. Comma-separated list.
 CORS_ORIGINS: list[str] = [
     o.strip() for o in os.getenv("SENTINEL_MESH_CORS_ORIGINS", "http://localhost:8080,http://localhost:3000").split(",")

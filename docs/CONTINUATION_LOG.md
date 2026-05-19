@@ -168,8 +168,43 @@ yarn build    # both packages compile cleanly
 
 ### Suggested Next Steps for Session 3
 
-1. Start backend: `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn sentinel_mesh.app:app --reload`
+1. Start backend: `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn sentinel_mesh.app:app --reload --port 8765`
 2. Smoke test demo endpoint
 3. Deploy to Splunk: `yarn workspace @splunk/ai-investigator run link:app`
 4. Wire SplunkSecureSettingsStore to Splunk Passwords API
 5. Test full Settings → Test Connection → Run Investigation round-trip
+
+---
+
+## Session 1 (continued) — code review fixes
+
+### What Changed
+
+Code-review pass identified 18 issues. Applied 6 quick fixes:
+
+1. **API base URL collision** — `apiClient.ts` default changed from `:8000` (collides with Splunk Web) to `:8765`. Backend now must be started on port 8765.
+2. **`SplunkSecureSettingsStore` no longer auto-selected** — gated behind `SENTINEL_MESH_USE_SPLUNK_STORE=1` flag so a stray `SPLUNK_TOKEN` env var doesn't break every settings call with `NotImplementedError`.
+3. **SPL injection guards** — added Pydantic field validators on `host`/`user`/`time_range` in `InvestigationRequest`. Pattern: `^[A-Za-z0-9][A-Za-z0-9._\-]{0,63}$` for entities.
+4. **`description` length cap** — `max_length=10_000` to prevent DoS.
+5. **Demo result deep copy** — `Orchestrator.run` now returns `copy.deepcopy(DEMO_RESULT)` so mutation of one response doesn't poison future calls.
+6. **`_safe_int` helper** in ExecutiveBriefAgent for `bytes_out` and `first_seen_domain_days`. Handles `None`, empty string, and non-numeric strings.
+
+### Validation
+
+All 6 fixes were tested:
+- Malicious host `"* OR 1=1` → rejected by Pydantic
+- 11k-char description → rejected
+- Empty host/user → normalized to None
+- Demo deep copy: mutating r1 doesn't affect r2
+- `_safe_int(None|''|'foo')` → 0
+- `USE_SPLUNK_STORE=0` + `SPLUNK_TOKEN` set → DevSettingsStore (was: stub crash)
+- TypeScript build: 0 errors
+
+### Remaining from Code Review (Not Yet Fixed)
+
+- Triage entity regex is too greedy — extracts wrong tokens from prose
+- Demo button uses unnecessary setTimeout hack
+- `apiClient` has no fetch timeout
+- Duplicate demo data between frontend and backend (intentional fallback, but drift risk)
+- Splunk-deployed app currently can't reach `localhost:8765` from a remote browser — needs proxy or different deployment story
+- Unit tests in `Investigations.unit.tsx` are likely brittle

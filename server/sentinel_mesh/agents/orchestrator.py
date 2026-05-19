@@ -1,5 +1,6 @@
 """Agent orchestrator. Runs agents sequentially and aggregates results."""
 
+import copy
 import logging
 from ..demo.demo_case import DEMO_RESULT
 from .triage_agent import TriageAgent
@@ -21,7 +22,7 @@ class Orchestrator:
     def run(self, request: dict) -> dict:
         if request.get("demo"):
             logger.info("Demo mode: returning static result.")
-            return DEMO_RESULT
+            return copy.deepcopy(DEMO_RESULT)
 
         errors: list[str] = []
         context: dict = {"request": request, "events": [], "timeline": [], "entities": {}}

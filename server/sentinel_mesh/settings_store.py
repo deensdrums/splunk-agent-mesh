@@ -160,7 +160,7 @@ class SplunkSecureSettingsStore(SettingsStore):
 
 def get_settings_store() -> SettingsStore:
     """Return the appropriate store for the current environment."""
-    from .config import SPLUNK_HOST, SPLUNK_TOKEN
-    if SPLUNK_TOKEN:
+    from .config import SPLUNK_HOST, SPLUNK_TOKEN, USE_SPLUNK_STORE
+    if USE_SPLUNK_STORE and SPLUNK_TOKEN:
         return SplunkSecureSettingsStore(SPLUNK_HOST, SPLUNK_TOKEN)
     return DevSettingsStore()

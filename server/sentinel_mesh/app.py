@@ -1,9 +1,10 @@
 """Sentinel Mesh FastAPI backend."""
 
 import logging
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 from .config import CORS_ORIGINS, LOG_LEVEL
@@ -27,13 +28,35 @@ app.add_middleware(
 
 # ---- Request / Response models ----
 
+_ENTITY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._\-]{0,63}$")
+_TIME_RANGE_PATTERN = re.compile(r"^[A-Za-z0-9@\-+:/. ]{1,32}$")
+
+
 class InvestigationRequest(BaseModel):
-    description: str
-    host: Optional[str] = None
-    user: Optional[str] = None
-    alert_name: Optional[str] = None
-    time_range: Optional[str] = "-24h"
+    description: str = Field(..., max_length=10_000)
+    host: Optional[str] = Field(default=None, max_length=64)
+    user: Optional[str] = Field(default=None, max_length=64)
+    alert_name: Optional[str] = Field(default=None, max_length=200)
+    time_range: Optional[str] = Field(default="-24h", max_length=32)
     demo: bool = False
+
+    @field_validator("host", "user")
+    @classmethod
+    def validate_entity(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if not _ENTITY_PATTERN.match(v):
+            raise ValueError("must be alphanumeric with . _ - only")
+        return v
+
+    @field_validator("time_range")
+    @classmethod
+    def validate_time_range(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if not _TIME_RANGE_PATTERN.match(v):
+            raise ValueError("invalid time_range format")
+        return v
 
 
 class SaveSettingsRequest(BaseModel):

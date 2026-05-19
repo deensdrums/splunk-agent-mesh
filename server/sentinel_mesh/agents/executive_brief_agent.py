@@ -4,6 +4,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 MITRE_MAP = {
     ("powershell.exe", "enc"): ("T1059.001", "PowerShell", 0.92),
     ("powershell.exe", "encoded"): ("T1059.001", "PowerShell", 0.92),
@@ -43,7 +50,7 @@ class ExecutiveBriefAgent:
             proc = event.get("process_name", "").lower()
             source = event.get("index", "").lower()
             fname = str(event.get("target_filename", "")).lower()
-            bytes_out = int(event.get("bytes_out", 0))
+            bytes_out = _safe_int(event.get("bytes_out"))
 
             if proc == "powershell.exe" and ("-enc" in cmd or "encodedcommand" in cmd):
                 techniques.append({
@@ -58,7 +65,7 @@ class ExecutiveBriefAgent:
                     "confidence": 0.81,
                     "evidence": "-enc or -EncodedCommand in command line",
                 })
-            if source == "dns" and int(event.get("first_seen_domain_days", 999)) < 30:
+            if source == "dns" and _safe_int(event.get("first_seen_domain_days"), 999) < 30:
                 techniques.append({
                     "technique_id": "T1105",
                     "name": "Ingress Tool Transfer",
