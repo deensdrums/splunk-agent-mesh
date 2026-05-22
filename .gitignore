@@ -9,8 +9,8 @@ licenses.json
 functional-temp
 splunktional-temp
 
-# Sentinel Mesh secrets and generated files
-server/.sentinel_mesh_settings.json
+# Splunk Agent Mesh secrets and generated files
+server/.agent_mesh_settings.json
 server/__pycache__/
 server/**/__pycache__/
 server/**/*.pyc
@@ -18,7 +18,7 @@ server/**/*.pyc
 .env.local
 *.key
 *.pem
-SENTINEL_MESH_API_KEY
+AGENT_MESH_API_KEY
 stage/
 packages/*/stage/
 

@@ -1,4 +1,4 @@
-# Sentinel Mesh — Continuation Log
+# Splunk Agent Mesh — Continuation Log
 
 Every coding session must append an entry to this file so the next agent session can resume without losing context.
 
@@ -39,7 +39,7 @@ Every coding session must append an entry to this file so the next agent session
 - `demo/demoData.ts` — static demo agent steps and full investigation result
 - `tests/Investigations.unit.tsx` — updated tests for new component
 
-#### Backend (server/sentinel_mesh/)
+#### Backend (server/agent_mesh/)
 - `app.py` — FastAPI app with CORS, all 5 API endpoints
 - `config.py` — runtime config from env vars
 - `security.py` — key redaction, input validation helpers
@@ -62,12 +62,12 @@ Every coding session must append an entry to this file so the next agent session
 - `requirements.txt` — Python dependencies
 
 #### Splunk Resources
-- `packages/ai-investigator/src/main/resources/splunk/lookups/endpoint_events.csv`
-- `packages/ai-investigator/src/main/resources/splunk/lookups/dns_events.csv`
-- `packages/ai-investigator/src/main/resources/splunk/lookups/auth_events.csv`
-- `packages/ai-investigator/src/main/resources/splunk/lookups/proxy_events.csv`
-- `packages/ai-investigator/src/main/resources/splunk/lookups/firewall_events.csv`
-- `packages/ai-investigator/src/main/resources/splunk/default/data/ui/nav/default.xml` (updated label)
+- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/endpoint_events.csv`
+- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/dns_events.csv`
+- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/auth_events.csv`
+- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/proxy_events.csv`
+- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/firewall_events.csv`
+- `packages/splunk-agent-mesh/src/main/resources/splunk/default/data/ui/nav/default.xml` (updated label)
 
 #### Reference SPL and Config
 - `splunk/spl/suspicious_powershell.spl`
@@ -81,7 +81,7 @@ Every coding session must append an entry to this file so the next agent session
 
 #### Other
 - `README.md` — full rewrite with setup, demo, architecture, limitations, next steps
-- `.gitignore` — added Sentinel Mesh secret/generated file patterns
+- `.gitignore` — added Splunk Agent Mesh secret/generated file patterns
 
 ### Commands Run
 
@@ -99,7 +99,7 @@ Expected build status after `yarn install && yarn build`:
 Expected backend status after `pip install -r requirements.txt`:
 - FastAPI app should start cleanly
 - Demo endpoint: `POST /api/v1/investigations/run` with `{"demo": true}` should return DEMO_RESULT
-- Real investigation: works if `SENTINEL_MESH_API_KEY` and `SENTINEL_MESH_DEV_MODE=1` are set
+- Real investigation: works if `AGENT_MESH_API_KEY` and `AGENT_MESH_DEV_MODE=1` are set
 
 ### Known Broken Things
 
@@ -111,9 +111,9 @@ Expected backend status after `pip install -r requirements.txt`:
 
 ### Suggested Next Steps for Session 2
 
-1. Run `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn sentinel_mesh.app:app --reload`
+1. Run `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn agent_mesh.app:app --reload`
 2. Smoke test: `curl -X POST http://localhost:8000/api/v1/investigations/run -d '{"description":"test","demo":true}' -H 'Content-Type: application/json'`
-3. Link and deploy to local Splunk: `yarn workspace @splunk/ai-investigator run link:app`
+3. Link and deploy to local Splunk: `yarn workspace @splunk/agent-mesh run link:app`
 4. Wire SplunkSecureSettingsStore to real Splunk Passwords API
 5. Test the Settings page round-trip (save → test connection)
 
@@ -149,7 +149,7 @@ TypeScript compilation errors fixed after running `yarn install && yarn build`:
 
 ```
 yarn install && yarn build    # installed deps, fixed 22 TS errors
-yarn workspace @splunk/investigations run types:build   # 0 errors
+yarn workspace @splunk/agent-mesh-ui run types:build   # 0 errors
 yarn build    # both packages compile cleanly
 ```
 
@@ -161,16 +161,16 @@ yarn build    # both packages compile cleanly
 
 ### Known Broken Things
 
-1. **Backend not started** — run `uvicorn sentinel_mesh.app:app --reload` from `server/`
+1. **Backend not started** — run `uvicorn agent_mesh.app:app --reload` from `server/`
 2. **SplunkSecureSettingsStore** still a stub
 3. **Real Splunk searches** not connected
 4. **`TextArea` no placeholder** — Splunk's TextArea doesn't support `placeholder`; removed from InvestigationPage. Consider adding a helper text label instead.
 
 ### Suggested Next Steps for Session 3
 
-1. Start backend: `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn sentinel_mesh.app:app --reload --port 8765`
+1. Start backend: `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn agent_mesh.app:app --reload --port 8765`
 2. Smoke test demo endpoint
-3. Deploy to Splunk: `yarn workspace @splunk/ai-investigator run link:app`
+3. Deploy to Splunk: `yarn workspace @splunk/agent-mesh run link:app`
 4. Wire SplunkSecureSettingsStore to Splunk Passwords API
 5. Test full Settings → Test Connection → Run Investigation round-trip
 
@@ -183,7 +183,7 @@ yarn build    # both packages compile cleanly
 Code-review pass identified 18 issues. Applied 6 quick fixes:
 
 1. **API base URL collision** — `apiClient.ts` default changed from `:8000` (collides with Splunk Web) to `:8765`. Backend now must be started on port 8765.
-2. **`SplunkSecureSettingsStore` no longer auto-selected** — gated behind `SENTINEL_MESH_USE_SPLUNK_STORE=1` flag so a stray `SPLUNK_TOKEN` env var doesn't break every settings call with `NotImplementedError`.
+2. **`SplunkSecureSettingsStore` no longer auto-selected** — gated behind `AGENT_MESH_USE_SPLUNK_STORE=1` flag so a stray `SPLUNK_TOKEN` env var doesn't break every settings call with `NotImplementedError`.
 3. **SPL injection guards** — added Pydantic field validators on `host`/`user`/`time_range` in `InvestigationRequest`. Pattern: `^[A-Za-z0-9][A-Za-z0-9._\-]{0,63}$` for entities.
 4. **`description` length cap** — `max_length=10_000` to prevent DoS.
 5. **Demo result deep copy** — `Orchestrator.run` now returns `copy.deepcopy(DEMO_RESULT)` so mutation of one response doesn't poison future calls.

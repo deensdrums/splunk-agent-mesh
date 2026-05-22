@@ -1,8 +1,8 @@
-# Sentinel Mesh
+# Splunk Agent Mesh
 
 **From alert to evidence-backed response in minutes.**
 
-Sentinel Mesh is an agentic SOC investigation copilot for Splunk. A SOC analyst describes an alert, clicks **Start Investigation**, and receives an evidence-backed report with MITRE ATT&CK mapping, blast radius analysis, response recommendations, and a reusable detection rule — powered by AI agents running against Splunk security data.
+Splunk Agent Mesh is an agentic SOC investigation copilot for Splunk. A SOC analyst describes an alert, clicks **Start Investigation**, and receives an evidence-backed report with MITRE ATT&CK mapping, blast radius analysis, response recommendations, and a reusable detection rule — powered by AI agents running against Splunk security data.
 
 ---
 
@@ -16,13 +16,13 @@ Security — Splunk Agentic Ops Hackathon 2026
 
 ```
 Browser (Splunk Web)
-  └── @splunk/ai-investigator  (Splunk app, single React page)
-        └── @splunk/investigations  (React component library)
+  └── @splunk/agent-mesh  (Splunk app, single React page)
+        └── @splunk/agent-mesh-ui  (React component library)
               ├── InvestigationPage  (main SOC console)
               ├── SettingsPage       (LLM provider + secure API key)
               └── AboutPage
 
-FastAPI backend (server/sentinel_mesh/)
+FastAPI backend (server/agent_mesh/)
   ├── Orchestrator → 7 specialized agents
   ├── LLM providers (Anthropic / OpenRouter / OpenAI-compatible)
   ├── Splunk search client
@@ -49,7 +49,7 @@ yarn build
 
 To develop with live reload:
 ```bash
-yarn start    # runs webpack --watch on the ai-investigator package
+yarn start    # runs webpack --watch on the splunk-agent-mesh package
 ```
 
 ### Backend
@@ -57,7 +57,7 @@ yarn start    # runs webpack --watch on the ai-investigator package
 ```bash
 cd server
 pip install -r requirements.txt
-uvicorn sentinel_mesh.app:app --reload --port 8000
+uvicorn agent_mesh.app:app --reload --port 8000
 ```
 
 The backend will be available at `http://localhost:8000`. OpenAPI docs at `http://localhost:8000/docs`.
@@ -66,7 +66,7 @@ The backend will be available at `http://localhost:8000`. OpenAPI docs at `http:
 
 ## Configure LLM Provider
 
-1. Open the Sentinel Mesh app in Splunk Web.
+1. Open the Splunk Agent Mesh app in Splunk Web.
 2. Click the **Settings** tab.
 3. Select your LLM provider (Anthropic, OpenRouter, or custom).
 4. Enter your model name and API key.
@@ -74,8 +74,8 @@ The backend will be available at `http://localhost:8000`. OpenAPI docs at `http:
 
 For local development only, you can also set:
 ```bash
-export SENTINEL_MESH_API_KEY=your-key-here
-export SENTINEL_MESH_DEV_MODE=1   # allows local key persistence
+export AGENT_MESH_API_KEY=your-key-here
+export AGENT_MESH_DEV_MODE=1   # allows local key persistence
 ```
 
 **API keys are never stored in plaintext in the repo.** See `docs/SECURE_SETTINGS.md`.
@@ -87,8 +87,8 @@ export SENTINEL_MESH_DEV_MODE=1   # allows local key persistence
 | Environment | Storage |
 |---|---|
 | Production (Splunk) | Splunk Passwords API (encrypted at rest) |
-| Local dev | `SENTINEL_MESH_API_KEY` env var |
-| Dev mode (explicit) | `.sentinel_mesh_settings.json` (gitignored) |
+| Local dev | `AGENT_MESH_API_KEY` env var |
+| Dev mode (explicit) | `.agent_mesh_settings.json` (gitignored) |
 
 The API key is never returned to the frontend. Settings responses show only `api_key_configured: true/false`.
 
@@ -106,7 +106,7 @@ The demo returns a deterministic result showing the full investigation workflow.
 
 ## Load Sample Data into Splunk
 
-Sample event CSVs are in `packages/ai-investigator/src/main/resources/splunk/lookups/`.
+Sample event CSVs are in `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/`.
 
 To index them:
 ```splunk
@@ -123,19 +123,19 @@ To index them:
 
 ```
 packages/
-  investigations/        # React component library (@splunk/investigations)
+  investigations/        # React component library (@splunk/agent-mesh-ui)
     src/
       pages/             # InvestigationPage, SettingsPage, AboutPage
       components/        # AgentRunPanel, Timeline, Evidence, etc.
       services/          # apiClient.ts
       demo/              # demoData.ts (static demo result)
       types.ts           # TypeScript types
-  ai-investigator/       # Splunk app (@splunk/ai-investigator)
+  splunk-agent-mesh/       # Splunk app (@splunk/agent-mesh)
     src/main/
       webapp/pages/      # Webpack entry points
       resources/splunk/  # Splunk app config, nav, views, lookups
 server/
-  sentinel_mesh/         # Python FastAPI backend
+  agent_mesh/         # Python FastAPI backend
     agents/              # 7 investigation agents
     llm/                 # LLM provider adapters
     demo/                # Static demo case + synthetic events
@@ -163,7 +163,7 @@ splunk/
 
 See `docs/TODO.md` for the full backlog. Immediate priorities:
 1. `yarn build` — verify frontend compiles with no TypeScript errors
-2. `uvicorn sentinel_mesh.app:app --reload` — verify backend starts
+2. `uvicorn agent_mesh.app:app --reload` — verify backend starts
 3. Test the demo endpoint: `curl -X POST http://localhost:8000/api/v1/investigations/run -d '{"description":"test","demo":true}' -H 'Content-Type: application/json'`
 4. Wire `SplunkSecureSettingsStore` to real Splunk Passwords API
 5. Connect `splunk_client.py` to a real Splunk instance

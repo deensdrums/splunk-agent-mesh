@@ -1,9 +1,9 @@
-# Sentinel Mesh — TODO
+# Splunk Agent Mesh — TODO
 
 ## Immediate Next Steps (Session 2)
 
 - [ ] Run `yarn install` and `yarn build` to verify frontend compiles
-- [ ] Run `cd server && pip install -r requirements.txt && uvicorn sentinel_mesh.app:app --reload` to verify backend starts
+- [ ] Run `cd server && pip install -r requirements.txt && uvicorn agent_mesh.app:app --reload` to verify backend starts
 - [ ] Verify demo mode returns correct JSON from `/api/v1/investigations/run` with `demo: true`
 - [ ] Add `react-dom` peer dep to `investigations` package (needed for standalone testing)
 - [ ] Wire frontend API client base URL to be configurable via Splunk app conf or env var
@@ -24,7 +24,7 @@
 ## Demo Polish
 
 - [ ] Animate agent steps with realistic timing (simulate 2-3 sec per agent)
-- [ ] Add Sentinel Mesh logo/branding to header
+- [ ] Add Splunk Agent Mesh logo/branding to header
 - [ ] Add severity color coding (red=critical, orange=high, yellow=medium, green=low)
 - [ ] Add confidence bar visualization
 - [ ] Make response plan items checkable (mark as completed)

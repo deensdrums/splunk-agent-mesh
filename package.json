@@ -9,7 +9,7 @@
     "lint": "yarn workspaces run lint",
     "setup": "yarn && yarn build",
     "test": "yarn workspaces run test",
-    "start": "yarn workspace @splunk/ai-investigator run start"
+    "start": "yarn workspace @splunk/agent-mesh run start"
   },
   "devDependencies": {
     "prettier": "^3.6.2"

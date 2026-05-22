@@ -1,4 +1,4 @@
-# Sentinel Mesh — Architecture Decisions
+# Splunk Agent Mesh — Architecture Decisions
 
 ---
 
@@ -17,10 +17,10 @@
 - **FastAPI standalone**: Pro: fast development, full async, easy dependency management, easy local testing. Con: requires separate deployment step; not automatically part of Splunk app bundle.
 - **Frontend-only LLM calls**: Pro: simplest. Con: API keys would be exposed to browser. Hard non-starter per security requirements.
 
-**Chosen Approach**: FastAPI standalone service (`server/sentinel_mesh/`). For Splunk production packaging, the same Python logic will be wrapped in a Splunk Custom REST Handler in a future session.
+**Chosen Approach**: FastAPI standalone service (`server/agent_mesh/`). For Splunk production packaging, the same Python logic will be wrapped in a Splunk Custom REST Handler in a future session.
 
 **Consequences**:
-- Local dev requires running `uvicorn sentinel_mesh.app:app` separately.
+- Local dev requires running `uvicorn agent_mesh.app:app` separately.
 - The Splunk app React code calls `http://localhost:8000` (configurable) in dev, and will call the Splunk REST proxy in production.
 - Backend dependencies go in `server/requirements.txt`, not in the Splunk app.
 
@@ -57,10 +57,10 @@
 
 **Chosen Approach**: Abstract `SettingsStore` with two implementations:
 1. `SplunkSecureSettingsStore` — production, uses Splunk Passwords API
-2. `DevSettingsStore` — local dev, reads from `SENTINEL_MESH_API_KEY` env var. Refuses to store plaintext to disk unless `SENTINEL_MESH_DEV_MODE=1` is explicitly set.
+2. `DevSettingsStore` — local dev, reads from `AGENT_MESH_API_KEY` env var. Refuses to store plaintext to disk unless `AGENT_MESH_DEV_MODE=1` is explicitly set.
 
 **Consequences**:
-- Developers must set `SENTINEL_MESH_API_KEY` env var locally (not commit it).
+- Developers must set `AGENT_MESH_API_KEY` env var locally (not commit it).
 - No accidental plaintext key storage.
 - Clear upgrade path to production.
 
@@ -87,9 +87,9 @@
 **Date**: 2026-05-18 (pre-existing scaffold decision)  
 **Status**: Accepted (inherited)
 
-**Context**: The Splunk Create scaffold created two packages: `investigations` (component library) and `ai-investigator` (Splunk app). All React UI logic lives in `investigations`. The Splunk app imports from it.
+**Context**: The Splunk Create scaffold created two packages: `investigations` (component library) and `splunk-agent-mesh` (Splunk app). All React UI logic lives in `investigations`. The Splunk app imports from it.
 
 **Consequences**:
 - UI changes go in `packages/investigations/src/`.
-- Splunk app pages (`packages/ai-investigator/src/main/webapp/pages/`) are thin entry points only.
+- Splunk app pages (`packages/splunk-agent-mesh/src/main/webapp/pages/`) are thin entry points only.
 - This is a clean separation that allows the component library to be tested standalone (via `start:demo`).

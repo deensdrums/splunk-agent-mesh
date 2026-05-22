@@ -1,4 +1,4 @@
-# Sentinel Mesh — Agent Design
+# Splunk Agent Mesh — Agent Design
 
 All agents are orchestrated by the `Orchestrator` and run sequentially in MVP. Each agent has a clean interface for future parallelization or LLM integration.
 

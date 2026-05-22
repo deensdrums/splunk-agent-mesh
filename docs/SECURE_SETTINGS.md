@@ -1,10 +1,10 @@
-# Sentinel Mesh — Secure Settings
+# Splunk Agent Mesh — Secure Settings
 
 ## How LLM Provider Settings Are Stored
 
 Non-secret settings (provider name, base URL, model name) are stored in:
 - **MVP (local dev)**: In-process dictionary, persisted to a local `settings.json` under `server/` (gitignored)
-- **Production Splunk**: `$SPLUNK_HOME/etc/apps/ai-investigator/local/sentinel_mesh.conf` via Splunk's conf API
+- **Production Splunk**: `$SPLUNK_HOME/etc/apps/splunk-agent-mesh/local/agent_mesh.conf` via Splunk's conf API
 
 ## How API Keys Are Stored
 
@@ -20,7 +20,7 @@ SettingsStore (abstract)
 Uses `POST /services/storage/passwords` to store the API key encrypted by Splunk's credential storage. The key is retrieved via `GET /services/storage/passwords/<realm>:<name>:` at request time. The raw key is never written to disk in plaintext.
 
 ### DevSettingsStore
-Reads from the `SENTINEL_MESH_API_KEY` environment variable. Refuses to store a plaintext key unless `SENTINEL_MESH_DEV_MODE=1` is also set. If `DEV_MODE` is not set and no env var key is found, the store returns `api_key_configured: false`.
+Reads from the `AGENT_MESH_API_KEY` environment variable. Refuses to store a plaintext key unless `AGENT_MESH_DEV_MODE=1` is also set. If `DEV_MODE` is not set and no env var key is found, the store returns `api_key_configured: false`.
 
 ## Which Splunk Capabilities May Be Required
 
@@ -32,7 +32,7 @@ For production deployment:
 
 ## How the Settings Page Works
 
-1. User opens Settings tab in Sentinel Mesh.
+1. User opens Settings tab in Splunk Agent Mesh.
 2. User selects provider (Anthropic / OpenRouter / Custom).
 3. User enters base URL (if Custom), model name, and API key.
 4. User clicks **Save**.

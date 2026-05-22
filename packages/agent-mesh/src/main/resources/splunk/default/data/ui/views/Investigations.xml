@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<view template="splunk-agent-mesh:/templates/Investigations.html" type="html">
+	<label>Investigations</label>
+</view>

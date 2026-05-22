@@ -1,16 +1,16 @@
-# Sentinel Mesh — 3-Minute Hackathon Demo Script
+# Splunk Agent Mesh — 3-Minute Hackathon Demo Script
 
 ---
 
 ## [0:00] The Problem (20 seconds)
 
-> "A SOC analyst gets an alert. PowerShell spawned from Word on a finance laptop. Is this a false positive, or is someone exfiltrating Q2 earnings data? Normally this is a 30-minute manual investigation — checking endpoint logs, DNS, auth logs, proxy data. Sentinel Mesh does it in seconds."
+> "A SOC analyst gets an alert. PowerShell spawned from Word on a finance laptop. Is this a false positive, or is someone exfiltrating Q2 earnings data? Normally this is a 30-minute manual investigation — checking endpoint logs, DNS, auth logs, proxy data. Splunk Agent Mesh does it in seconds."
 
 ---
 
 ## [0:20] Launch Investigation (30 seconds)
 
-- Open Splunk. Navigate to **Sentinel Mesh** tab.
+- Open Splunk. Navigate to **Splunk Agent Mesh** tab.
 - Click **"Load Suspicious PowerShell Demo"** — the form fills with:
   - Description: *"winword.exe spawned PowerShell with encoded command on FIN-LAPTOP-22. User jsmith. Possible exfiltration."*
   - Host: `FIN-LAPTOP-22`, User: `jsmith`
@@ -69,7 +69,7 @@
 - Show **Response Plan**: Isolate host, disable jsmith session, block domain, hunt across environment.
 - Point out the approval flags: *every action requires analyst sign-off*.
 
-> "Sentinel Mesh never takes action automatically. Every recommendation requires human approval."
+> "Splunk Agent Mesh never takes action automatically. Every recommendation requires human approval."
 
 ---
 
@@ -78,13 +78,13 @@
 - Show **Detection Recommendation** SPL code block.
 - Highlight that it catches Office-spawned encoded PowerShell across all hosts.
 
-> "And here's the bonus: Sentinel Mesh generates a reusable Splunk detection so this never goes undetected again. Copy, save, deploy."
+> "And here's the bonus: Splunk Agent Mesh generates a reusable Splunk detection so this never goes undetected again. Copy, save, deploy."
 
 ---
 
 ## [3:00] Closing Line
 
-> "From alert to evidence-backed response in minutes — with a detection rule you can deploy today. That's Sentinel Mesh."
+> "From alert to evidence-backed response in minutes — with a detection rule you can deploy today. That's Splunk Agent Mesh."
 
 ---
 

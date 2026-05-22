@@ -1,19 +1,19 @@
-# Sentinel Mesh — Project Brief
+# Splunk Agent Mesh — Project Brief
 
 ## Project Name
-Sentinel Mesh
+Splunk Agent Mesh
 
 ## Hackathon Track
 Security — Splunk Agentic Ops Hackathon
 
 ## One-Sentence Pitch
-Sentinel Mesh turns a raw security alert into an evidence-backed investigation report with MITRE ATT&CK mapping, blast radius analysis, and response recommendations — in minutes, not hours.
+Splunk Agent Mesh turns a raw security alert into an evidence-backed investigation report with MITRE ATT&CK mapping, blast radius analysis, and response recommendations — in minutes, not hours.
 
 ## Problem
 SOC analysts face alert fatigue and slow mean-time-to-investigate. Correlating endpoint, DNS, auth, and proxy telemetry across tools is manual, slow, and error-prone. A skilled analyst may spend 30–60 minutes on a single alert just to determine if it warrants escalation.
 
 ## Solution
-Sentinel Mesh is an agentic AI copilot embedded inside Splunk. When an analyst describes an alert or enters an entity of interest, Sentinel Mesh:
+Splunk Agent Mesh is an agentic AI copilot embedded inside Splunk. When an analyst describes an alert or enters an entity of interest, Splunk Agent Mesh:
 
 1. Generates targeted SPL searches from context.
 2. Runs those searches against Splunk security data.
@@ -49,7 +49,7 @@ All AI-generated conclusions are tied to evidence retrieved from Splunk — the 
 - Agent memory across sessions (stateless per investigation in MVP)
 
 ## Final Demo Experience
-An analyst opens the Sentinel Mesh tab in Splunk, clicks "Load Suspicious PowerShell Demo," and within seconds sees:
+An analyst opens the Splunk Agent Mesh tab in Splunk, clicks "Load Suspicious PowerShell Demo," and within seconds sees:
 - An agent progress feed showing each investigative step
 - A severity High / 87% confidence summary
 - A 6-event timeline from Office document open to data exfiltration

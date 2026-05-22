@@ -1,11 +1,11 @@
-# Sentinel Mesh — Architecture
+# Splunk Agent Mesh — Architecture
 
 ## Current Repo Structure
 
 ```
 splunk-hackathon/
 ├── packages/
-│   ├── investigations/           # @splunk/investigations — React component library
+│   ├── investigations/           # @splunk/agent-mesh-ui — React component library
 │   │   ├── src/
 │   │   │   ├── Investigations.tsx       # Root app component (tab nav)
 │   │   │   ├── InvestigationsStyles.ts
@@ -28,7 +28,7 @@ splunk-hackathon/
 │   │   │   └── demo/
 │   │   │       └── demoData.ts          # Static demo investigation result
 │   │   └── ...
-│   └── ai-investigator/          # @splunk/ai-investigator — Splunk app bundle
+│   └── splunk-agent-mesh/          # @splunk/agent-mesh — Splunk app bundle
 │       ├── src/main/
 │       │   ├── webapp/pages/
 │       │   │   └── Investigations/      # Webpack entry point
@@ -44,7 +44,7 @@ splunk-hackathon/
 │       │       │   └── savedsearches.conf
 │       │       └── lookups/             # Sample data CSVs for demo
 ├── server/
-│   └── sentinel_mesh/            # Python FastAPI backend
+│   └── agent_mesh/            # Python FastAPI backend
 │       ├── app.py                # FastAPI app + routes
 │       ├── config.py
 │       ├── security.py           # Credential redaction helpers
@@ -81,7 +81,7 @@ splunk-hackathon/
 **Build**: Webpack via `@splunk/webpack-configs`, bundled into Splunk app static assets  
 **Navigation**: Tab-based navigation in the root `Investigations` component (no React Router needed for MVP — avoids Splunk URL routing conflicts)
 
-The `@splunk/investigations` package is the component library. All UI logic lives here. The `@splunk/ai-investigator` package is purely the Splunk app wrapper that mounts the component into Splunk Web.
+The `@splunk/agent-mesh-ui` package is the component library. All UI logic lives here. The `@splunk/agent-mesh` package is purely the Splunk app wrapper that mounts the component into Splunk Web.
 
 ## Backend Architecture
 
@@ -123,7 +123,7 @@ graph TD
 
 In MVP, the React frontend makes direct HTTP calls to `http://localhost:8000/api/v1` via `apiClient.ts`. The base URL is configurable.
 
-For Splunk integration, the backend will be exposed via Splunk's REST proxy at `/en-US/splunkd/services/sentinel_mesh/...`, and the API client will use relative URLs.
+For Splunk integration, the backend will be exposed via Splunk's REST proxy at `/en-US/splunkd/services/agent_mesh/...`, and the API client will use relative URLs.
 
 ## How Backend Talks to Splunk
 
@@ -155,4 +155,4 @@ POST /investigations/run → Backend retrieves api_key from secure store
 2. **Auth**: MVP has no auth on the backend. In production, validate Splunk session tokens.
 3. **Rate limiting**: LLM API calls can be slow. MVP uses deterministic stubs. Add timeouts.
 4. **Splunk search latency**: Real SPL searches can take 10+ seconds. Add async/polling in v2.
-5. **Secret storage**: MVP DevSettingsStore refuses plaintext unless `SENTINEL_MESH_DEV_MODE=1`. Production uses Splunk Passwords API.
+5. **Secret storage**: MVP DevSettingsStore refuses plaintext unless `AGENT_MESH_DEV_MODE=1`. Production uses Splunk Passwords API.
