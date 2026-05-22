@@ -1,121 +1,41 @@
 # Splunk Agent Mesh
 
-**From alert to evidence-backed response in minutes.**
+**A configurable agentic platform for Splunk Enterprise.**
 
-Splunk Agent Mesh is an agentic SOC investigation copilot for Splunk. A SOC analyst describes an alert, clicks **Start Investigation**, and receives an evidence-backed report with MITRE ATT&CK mapping, blast radius analysis, response recommendations, and a reusable detection rule — powered by AI agents running against Splunk security data.
+Define a mesh of AI agents in `agents.conf`. Give the user request. Each agent
+writes back to the page in markdown. The bundled "first mesh" is a SOC
+investigation mesh, but the platform is general — add a stanza and a new agent
+shows up as a new tab.
+
+---
+
+## How it works
+
+```
+agents.conf  (Splunk app default + local)
+     │
+     ▼
+SplunkRestConfReader  ──▶  Orchestrator  ──▶  LLMAgent × N  ──▶  markdown
+                                                                     │
+                                                                     ▼
+                                                              Browser
+                                                       (one tab per agent)
+```
+
+- Backend: FastAPI on port 8765. Reads `agents.conf` via Splunk REST.
+- Each agent is fully described by its stanza (system prompt, model, order).
+- The runtime ships one generic `LLMAgent` — no per-agent code.
+- Agents are independent in v1 (each sees only the original user request).
+- Outputs are sanitized markdown. The UI renders with `react-markdown`.
+
+See `docs/ARCHITECTURE.md` and `docs/DECISIONS.md` (ADR-006, 007, 008) for
+the full design.
 
 ---
 
 ## Hackathon Track
 
-Security — Splunk Agentic Ops Hackathon 2026
-
----
-
-## Architecture
-
-```
-Browser (Splunk Web)
-  └── @splunk/agent-mesh  (Splunk app, single React page)
-        └── @splunk/agent-mesh-ui  (React component library)
-              ├── InvestigationPage  (main SOC console)
-              ├── SettingsPage       (LLM provider + secure API key)
-              └── AboutPage
-
-FastAPI backend (server/agent_mesh/)
-  ├── Orchestrator → 7 specialized agents
-  ├── LLM providers (Anthropic / OpenRouter / OpenAI-compatible)
-  ├── Splunk search client
-  └── SettingsStore (dev: env var | production: Splunk Passwords API)
-```
-
-See `docs/ARCHITECTURE.md` for the full data flow diagram.
-
----
-
-## Setup
-
-### Prerequisites
-- Node.js >= 22
-- Yarn >= 1.2
-- Python >= 3.11
-
-### Frontend
-
-```bash
-yarn install
-yarn build
-```
-
-To develop with live reload:
-```bash
-yarn start    # runs webpack --watch on the splunk-agent-mesh package
-```
-
-### Backend
-
-```bash
-cd server
-pip install -r requirements.txt
-uvicorn agent_mesh.app:app --reload --port 8000
-```
-
-The backend will be available at `http://localhost:8000`. OpenAPI docs at `http://localhost:8000/docs`.
-
----
-
-## Configure LLM Provider
-
-1. Open the Splunk Agent Mesh app in Splunk Web.
-2. Click the **Settings** tab.
-3. Select your LLM provider (Anthropic, OpenRouter, or custom).
-4. Enter your model name and API key.
-5. Click **Save**, then **Test Connection**.
-
-For local development only, you can also set:
-```bash
-export AGENT_MESH_API_KEY=your-key-here
-export AGENT_MESH_DEV_MODE=1   # allows local key persistence
-```
-
-**API keys are never stored in plaintext in the repo.** See `docs/SECURE_SETTINGS.md`.
-
----
-
-## Credential Storage
-
-| Environment | Storage |
-|---|---|
-| Production (Splunk) | Splunk Passwords API (encrypted at rest) |
-| Local dev | `AGENT_MESH_API_KEY` env var |
-| Dev mode (explicit) | `.agent_mesh_settings.json` (gitignored) |
-
-The API key is never returned to the frontend. Settings responses show only `api_key_configured: true/false`.
-
----
-
-## Demo Mode
-
-No API key or Splunk connection needed. Click **"Load Suspicious PowerShell Demo"** in the Investigation tab to run the built-in synthetic scenario:
-
-> User `jsmith` opens a suspicious Office document → `winword.exe` spawns encoded PowerShell → rare domain contacted → finance file server accessed → 48 MB exfiltrated.
-
-The demo returns a deterministic result showing the full investigation workflow.
-
----
-
-## Load Sample Data into Splunk
-
-Sample event CSVs are in `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/`.
-
-To index them:
-```splunk
-| inputlookup endpoint_events.csv | collect index=endpoint
-| inputlookup dns_events.csv | collect index=dns
-| inputlookup auth_events.csv | collect index=wineventlog
-| inputlookup proxy_events.csv | collect index=proxy
-| inputlookup firewall_events.csv | collect index=firewall
-```
+Splunk Agentic Ops Hackathon
 
 ---
 
@@ -123,66 +43,189 @@ To index them:
 
 ```
 packages/
-  investigations/        # React component library (@splunk/agent-mesh-ui)
+  agent-mesh-ui/                  # @splunk/agent-mesh-ui — React component library
     src/
-      pages/             # InvestigationPage, SettingsPage, AboutPage
-      components/        # AgentRunPanel, Timeline, Evidence, etc.
-      services/          # apiClient.ts
-      demo/              # demoData.ts (static demo result)
-      types.ts           # TypeScript types
-  splunk-agent-mesh/       # Splunk app (@splunk/agent-mesh)
+      pages/                      # InvestigationPage, SettingsPage, AboutPage
+      components/
+        MarkdownView.tsx          # Sanitized markdown + pluggable code-block renderers
+        AgentTabsPanel.tsx        # Dynamic tabs from the configured mesh
+        AgentStatusBadge.tsx
+        legacy/                   # Archived structured-output components
+      services/apiClient.ts
+      demo/demoData.ts
+      types.ts
+  agent-mesh/                     # @splunk/agent-mesh — Splunk app bundle
     src/main/
-      webapp/pages/      # Webpack entry points
-      resources/splunk/  # Splunk app config, nav, views, lookups
+      webapp/pages/Investigations # Webpack entry
+      resources/splunk/
+        default/agents.conf       # ← the mesh definition lives here
+        default/app.conf, nav, views
+        README/agents.conf.spec
+        lookups/                  # Sample CSV data
 server/
-  agent_mesh/         # Python FastAPI backend
-    agents/              # 7 investigation agents
-    llm/                 # LLM provider adapters
-    demo/                # Static demo case + synthetic events
-    app.py               # FastAPI routes
-    settings_store.py    # Credential storage abstraction
-docs/                    # Project planning and architecture
-splunk/
-  spl/                   # Example SPL detection queries
-  config_examples/       # Splunk conf file examples
+  agent_mesh/                     # Python FastAPI backend
+    conf_reader.py                # SplunkRestConfReader + FileConfReader
+    agents/
+      agent_config.py             # AgentConfig dataclass
+      llm_agent.py                # Generic LLM-backed agent
+      orchestrator.py
+    llm/                          # Anthropic, OpenRouter, OpenAI-compatible
+    demo/demo_case.py
+    app.py
+docs/
+splunk/                           # Example SPL and conf snippets
 ```
+
+---
+
+## Setup
+
+### Prerequisites
+- Node.js >= 22
+- Yarn >= 1.22
+- Python >= 3.11
+- A Splunk Enterprise instance (for live mode; demo mode works without it)
+
+### Build the frontend
+
+```bash
+yarn install
+yarn build
+```
+
+Live reload:
+```bash
+yarn start  # webpack --watch on @splunk/agent-mesh
+```
+
+### Run the backend
+
+```bash
+cd server
+pip install -r requirements.txt
+uvicorn agent_mesh.app:app --reload --port 8765
+```
+
+Backend at `http://localhost:8765`. OpenAPI docs at `http://localhost:8765/docs`.
+
+### Link into Splunk
+
+```bash
+yarn workspace @splunk/agent-mesh run link:app
+# Splunk will pick up the new app on next restart
+```
+
+---
+
+## Configure the mesh
+
+Edit `packages/agent-mesh/src/main/resources/splunk/default/agents.conf`.
+
+Each `[agent:<id>]` stanza becomes one tab in the UI and one node in the
+orchestrator's run loop.
+
+```ini
+[agent:my_agent]
+display_name = My Agent
+description = Does something useful.
+order = 100
+system_prompt = You are <role>. Given <input>, respond in markdown with \
+  sections: ## Section A, ## Section B. \
+  Be concise.
+```
+
+See `docs/AGENT_DESIGN.md` for the full stanza reference and
+`packages/agent-mesh/src/main/resources/splunk/README/agents.conf.spec` for the
+Splunk-style spec.
+
+Reload conf:
+```bash
+splunk reload deploy-server
+# or via Splunk Web: Settings → Server controls → Restart
+```
+
+Refresh the page in Splunk Web — new tabs appear.
+
+---
+
+## Configure the LLM provider
+
+1. Open Splunk Agent Mesh in Splunk Web.
+2. Click the **Settings** tab.
+3. Pick a provider (Anthropic, OpenRouter, OpenAI-compatible).
+4. Enter the model name and API key.
+5. Click **Save**, then **Test Connection**.
+
+For local dev only:
+```bash
+export AGENT_MESH_API_KEY=...
+export AGENT_MESH_DEV_MODE=1   # required to persist a key to disk
+```
+
+API keys are never returned to the browser. The Settings page shows only
+`api_key_configured: true|false`.
+
+| Environment | Storage |
+|---|---|
+| Splunk Enterprise | Splunk Passwords API (encrypted at rest) — Phase 3.1 |
+| Local dev | `AGENT_MESH_API_KEY` env var |
+| Explicit dev persistence | `.agent_mesh_settings.json` (gitignored) |
+
+---
+
+## Demo Mode
+
+No API key or Splunk connection required. Click **Load Suspicious PowerShell
+Demo** in the Investigation tab.
+
+The demo populates every configured agent's tab with canned markdown that
+matches the scenario:
+
+> User `jsmith` opens a suspicious Office document → `winword.exe` spawns
+> encoded PowerShell → rare domain contacted → finance file server accessed
+> → 48 MB exfiltrated.
+
+If you add a new agent stanza without a canned demo block, the demo shows a
+"no demo content for this agent" placeholder so no tab silently disappears.
+
+---
+
+## Load sample data into Splunk
+
+```spl
+| inputlookup endpoint_events.csv | collect index=endpoint
+| inputlookup dns_events.csv | collect index=dns
+| inputlookup auth_events.csv | collect index=wineventlog
+| inputlookup proxy_events.csv | collect index=proxy
+| inputlookup firewall_events.csv | collect index=firewall
+```
+
+CSVs live at `packages/agent-mesh/src/main/resources/splunk/lookups/`.
 
 ---
 
 ## Known Limitations (MVP)
 
-- Demo mode only — real Splunk search integration requires a live Splunk instance and `SPLUNK_TOKEN` env var
-- LLM agents are deterministic stubs — LLM integration is wired but requires a configured API key and installed provider packages (`pip install anthropic` or `pip install openai`)
-- `SplunkSecureSettingsStore` methods are stubs — full Passwords API wiring is a next-session task
-- No investigation history — each run is stateless
-- Entity graph is a placeholder (D3/Cytoscape visualization planned for v2)
-
----
-
-## Next Steps
-
-See `docs/TODO.md` for the full backlog. Immediate priorities:
-1. `yarn build` — verify frontend compiles with no TypeScript errors
-2. `uvicorn agent_mesh.app:app --reload` — verify backend starts
-3. Test the demo endpoint: `curl -X POST http://localhost:8000/api/v1/investigations/run -d '{"description":"test","demo":true}' -H 'Content-Type: application/json'`
-4. Wire `SplunkSecureSettingsStore` to real Splunk Passwords API
-5. Connect `splunk_client.py` to a real Splunk instance
+- LLM providers wired but not live-tested end-to-end yet.
+- `SplunkSecureSettingsStore` (Passwords API) and `SplunkClient` (search jobs)
+  are stubs awaiting Phase 3.
+- Agents run sequentially server-side. Streaming and parallel execution are
+  deferred (see `docs/TODO.md`).
+- Skills (tool use) are reserved in the stanza format but not implemented.
 
 ---
 
 ## Continuation Notes
 
-See `docs/CONTINUATION_LOG.md` for session-by-session change history. Every coding session must append an entry to that file.
+`docs/CONTINUATION_LOG.md` tracks session-by-session change history. Every
+coding session must append an entry to that file.
 
 ---
 
 ## Original Scaffold Notes
 
-This project was created with Splunk Create / `@splunk/create`. It is a Yarn workspace monorepo. Original scaffold README is preserved below.
-
-### Yarn Workspaces
-
-Use [Yarn Workspaces](https://yarnpkg.com/lang/en/docs/workspaces/) to manage packages.
+This project was created with Splunk Create / `@splunk/create`. It is a Yarn
+workspace monorepo.
 
 - `yarn run setup` — install deps and build all packages
 - `yarn run build` — production bundle

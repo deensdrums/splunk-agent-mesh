@@ -1,253 +1,145 @@
 # Splunk Agent Mesh — Agent Design
 
-All agents are orchestrated by the `Orchestrator` and run sequentially in MVP. Each agent has a clean interface for future parallelization or LLM integration.
+Agents are configuration, not code. Each agent is a stanza in `agents.conf`.
+This document specifies the stanza format and documents the seven SOC-mesh
+agents that ship as the default mesh.
 
 ---
 
-## Triage Agent
+## The Agent Stanza
 
-**Purpose**: Initial classification of the investigation request. Extracts entities (host, user, domain, IP), assesses urgency, and selects which downstream agents to invoke.
+Each `[agent:<id>]` stanza in `agents.conf` becomes one tab in the UI and one
+node in the mesh. The runtime ships one generic `LLMAgent` class — all
+per-agent behavior lives in the stanza.
 
-**Inputs**:
-- `description`: str — natural language description of the alert
-- `host`: str | None
-- `user`: str | None
-- `alert_name`: str | None
-- `time_range`: str | None
+```ini
+[default]
+enabled = 1
+model = claude-sonnet-4-6
+temperature = 0.2
+max_tokens = 2048
+output_format = markdown
 
-**Outputs**:
-```json
-{
-  "entities": { "users": [], "hosts": [], "domains": [], "ips": [] },
-  "initial_severity": "Low | Medium | High | Critical",
-  "agents_to_run": ["spl_hunter", "timeline", "blast_radius", "detection_gap", "response"],
-  "triage_notes": "string"
-}
+[agent:my_agent]
+display_name = My Agent
+description = One-line description shown in the UI.
+order = 100
+system_prompt = You are <role>. Given <input description>, respond in <output format>. \
+  ...continued on multiple lines via trailing backslash.
 ```
 
-**Prompt Contract** (when LLM-backed):
-- Extract named entities from description.
-- Classify initial severity based on alert keywords and entities.
-- Do not fabricate entities not mentioned in input.
-- Return structured JSON only.
+### Fields
 
-**Tool Access**: None (input parsing only)
+| Field | Required | Type | Default | Notes |
+|---|---|---|---|---|
+| `system_prompt` | yes | string | — | The LLM system prompt. Multi-line via `\` continuation. |
+| `display_name` | no | string | id | Tab label and UI display. |
+| `description` | no | string | "" | Shown as a meta line above the tab content. |
+| `order` | no | int | 100 | Display and execution order. Lower runs first. Ties broken by id. |
+| `enabled` | no | bool | 1 | Disabled agents are excluded entirely. |
+| `model` | no | string | (from default) | LLM model identifier. |
+| `temperature` | no | float | (from default) | Sampling temperature. |
+| `max_tokens` | no | int | 2048 | Cap on completion length. |
+| `output_format` | no | string | markdown | Reserved; only `markdown` honored in v1. |
+| `skills` | no | csv | "" | Reserved for future skill/tool wiring. |
 
-**Failure Behavior**: Return default entity extraction from structured fields (host/user). Log warning. Continue with remaining agents.
+See `packages/agent-mesh/src/main/resources/splunk/README/agents.conf.spec` for the
+canonical reference.
 
----
+### Input contract
 
-## SPL Hunter Agent
+Every agent receives only the original user request as input:
 
-**Purpose**: Generate and execute targeted SPL searches to retrieve evidence from Splunk.
-
-**Inputs**:
-- Triage output (entities, time range)
-- Splunk client handle
-
-**Outputs**:
-```json
-{
-  "searches_run": [
-    { "name": "string", "spl": "string", "result_count": 0, "events": [] }
-  ],
-  "raw_evidence": []
-}
+```
+description: <user-provided free text>
+host: <user-provided, optional>
+user: <user-provided, optional>
+alert_name: <user-provided, optional>
+time_range: <user-provided, optional>
 ```
 
-**Prompt Contract** (when LLM-backed):
-- Generate SPL that targets the provided entities.
-- Prefer indexed fields over extracted fields.
-- Add time range constraints from triage.
-- Do not invent SPL functions that do not exist.
-- Return only valid SPL.
+Agents do not see each other's outputs in v1. This keeps each agent independent
+and makes prompts safer to tune in isolation.
 
-**Tool Access**: `splunk_client.run_search(spl, earliest, latest)`
+### Output contract
 
-**Failure Behavior**: Return empty evidence set with search errors noted. Timeline and other agents continue with available data.
-
----
-
-## Timeline Agent
-
-**Purpose**: Correlate raw events from multiple sources into a chronological incident timeline.
-
-**Inputs**:
-- Raw evidence from SPL Hunter
-- Triage entities
-
-**Outputs**:
-```json
-{
-  "timeline": [
-    {
-      "time": "ISO8601",
-      "title": "string",
-      "description": "string",
-      "source": "endpoint|dns|auth|proxy|firewall",
-      "severity": "low|medium|high|critical"
-    }
-  ]
-}
-```
-
-**Prompt Contract** (when LLM-backed):
-- Assign a meaningful title and description to each event.
-- Do not invent events not present in raw evidence.
-- Sort chronologically.
-- Classify severity per event based on behavior indicators.
-
-**Tool Access**: None (post-processing of evidence)
-
-**Failure Behavior**: Return empty timeline. Surface raw evidence in evidence table instead.
+Agents emit GitHub-flavored markdown. The UI renders with `react-markdown` +
+`remark-gfm` + `rehype-sanitize`. The `MarkdownView` component supports a
+pluggable code-block renderer registry, so future skills can emit ` ```spl`,
+` ```splunk-chart`, or ` ```splunk-table` blocks that route to rich components
+without touching agent contracts.
 
 ---
 
-## Blast Radius Agent
+## Default SOC mesh
 
-**Purpose**: Identify other users, hosts, or systems that may be affected by or connected to the incident.
+The default `agents.conf` ships these seven agents.
 
-**Inputs**:
-- Triage entities
-- Timeline events
-- Splunk client handle
+### `agent:triage` (order 10)
 
-**Outputs**:
-```json
-{
-  "additional_hosts": [],
-  "additional_users": [],
-  "lateral_movement_indicators": [],
-  "blast_radius_summary": "string"
-}
-```
+**Role**: SOC triage analyst.
 
-**Prompt Contract** (when LLM-backed):
-- Search for lateral movement from known affected hosts.
-- Look for shared credentials, shared network segments.
-- Do not include entities without evidence.
+**Asked to produce**: a Severity classification, an Entities list, and a
+Reasoning paragraph. Conservative on Critical.
 
-**Tool Access**: `splunk_client.run_search(blast_radius_spl)`
+### `agent:spl_hunter` (order 20)
 
-**Failure Behavior**: Return empty additional entities. Note in summary.
+**Role**: SPL author.
 
----
+**Asked to produce**: 2-4 candidate SPL searches in fenced ```spl blocks, each
+with a short heading explaining what the search finds. Prefers common Splunk
+indexes; does not invent custom indexes.
 
-## Detection Gap Agent
+### `agent:timeline` (order 30)
 
-**Purpose**: Generate a reusable Splunk detection rule (SPL + metadata) based on the observed attack pattern.
+**Role**: Timeline builder.
 
-**Inputs**:
-- Timeline events
-- MITRE technique mappings (from Triage or Blast Radius)
-- Evidence records
+**Asked to produce**: a markdown table of `Time | Event` rows. Uses relative
+times (T+0, T+1m, ...) when exact times aren't available; refuses to fabricate
+precise timestamps.
 
-**Outputs**:
-```json
-{
-  "title": "string",
-  "spl": "string",
-  "description": "string",
-  "severity": "string",
-  "mitre": ["T1059.001"]
-}
-```
+### `agent:blast_radius` (order 40)
 
-**Prompt Contract** (when LLM-backed):
-- Generate SPL using standard Splunk search commands.
-- Use indexed fields only.
-- Include stats command to aggregate by relevant fields.
-- Map to MITRE techniques present in evidence.
-- Detection should be broadly applicable, not narrowly scoped to the specific incident.
+**Role**: Lateral-movement / exposure analyst.
 
-**Tool Access**: None (generation only)
+**Asked to produce**: a Directly affected list, Recommended pivot searches,
+and a Why this matters explanation. Focuses on credential reuse, lateral
+movement, and shared infrastructure.
 
-**Failure Behavior**: Return a generic detection template relevant to the attack class.
+### `agent:detection_gap` (order 50)
 
----
+**Role**: Detection engineer.
 
-## Response Agent
+**Asked to produce**: one Splunk detection rule (title, fenced ```spl block,
+severity, MITRE techniques, and tuning notes). Behavioral patterns are
+preferred over signature matches.
 
-**Purpose**: Generate a prioritized, human-approved response plan with specific actions and risks.
+### `agent:response` (order 60)
 
-**Inputs**:
-- Triage entities
-- Timeline
-- Blast radius results
-- Severity score
+**Role**: Incident response coordinator.
 
-**Outputs**:
-```json
-{
-  "response_plan": [
-    {
-      "action": "string",
-      "target": "string",
-      "risk": "string",
-      "requires_approval": true
-    }
-  ]
-}
-```
+**Asked to produce**: a numbered list of 3-6 prioritized actions, each with
+an `_Approval required: <role>._` line. Opens with a blockquote reminder that
+no action runs without approval. Never recommends irreversible destructive
+actions without explicit risk notes.
 
-**Prompt Contract** (when LLM-backed):
-- All actions require `requires_approval: true` unless they are passive/read-only.
-- Do not recommend irreversible destructive actions without explicit risk note.
-- Prioritize containment over eradication.
-- Every action must reference a specific target entity.
+### `agent:executive_brief` (order 70)
 
-**Tool Access**: None (recommendation only; no execution)
+**Role**: Executive communicator.
 
-**Failure Behavior**: Return a minimal safe response plan (isolate, preserve evidence).
+**Asked to produce**: a plain-language summary, Severity, Confidence with
+rationale, MITRE techniques, and Recommended next steps pointing the reader to
+other agents' tabs. Precise, no overstated certainty.
 
 ---
 
-## Executive Brief Agent
+## Adding a new agent
 
-**Purpose**: Synthesize the full investigation into a concise executive summary with severity, confidence, and key findings.
+1. Open `packages/agent-mesh/src/main/resources/splunk/default/agents.conf`.
+2. Add a new `[agent:<your_id>]` stanza with at minimum `display_name` and
+   `system_prompt`.
+3. Reload the conf: in Splunk Web, `Settings → Server controls → Restart`,
+   or `splunk reload deploy-server`.
+4. Refresh the app — a new tab appears.
 
-**Inputs**:
-- All agent outputs
-- Raw evidence count
-
-**Outputs**:
-```json
-{
-  "title": "string",
-  "severity": "Low|Medium|High|Critical",
-  "confidence": 0.87,
-  "summary": "string",
-  "mitre": [
-    { "technique_id": "T1059.001", "name": "string", "confidence": 0.92, "evidence": "string" }
-  ]
-}
-```
-
-**Prompt Contract** (when LLM-backed):
-- Confidence score must reflect actual evidence count and quality.
-- Summary must cite specific entities and behaviors from evidence.
-- Do not state conclusions not supported by evidence.
-- MITRE techniques must be observed, not hypothetical.
-
-**Tool Access**: None (synthesis only)
-
-**Failure Behavior**: Return a minimal summary with `confidence: 0.0` and note insufficient evidence.
-
----
-
-## Orchestrator
-
-**Purpose**: Run agents in sequence, aggregate outputs, handle failures, and produce the final `InvestigationResult`.
-
-**Run order** (MVP sequential):
-1. TriageAgent
-2. SPLHunterAgent
-3. TimelineAgent
-4. BlastRadiusAgent
-5. DetectionGapAgent
-6. ResponseAgent
-7. ExecutiveBriefAgent
-
-**Failure policy**: Each agent failure is caught and logged. Orchestration continues with whatever data is available. Final result includes an `agent_errors` list.
-
-**Demo mode**: When `demo=true` is passed, the orchestrator returns the static `demo_case.py` result without running any agents or making any API calls.
+No backend redeploy. No frontend rebuild. No code changes.

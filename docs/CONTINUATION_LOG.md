@@ -208,3 +208,83 @@ All 6 fixes were tested:
 - Duplicate demo data between frontend and backend (intentional fallback, but drift risk)
 - Splunk-deployed app currently can't reach `localhost:8765` from a remote browser — needs proxy or different deployment story
 - Unit tests in `Investigations.unit.tsx` are likely brittle
+
+---
+
+## Session 2 — 2026-05-21 (project pivot)
+
+### What Changed
+
+Major repositioning: from a SOC-specific copilot to a general agentic platform
+on Splunk. The SOC mesh becomes the first example mesh.
+
+Three commits on branch `feature/agentic-platform-concept`:
+
+1. **`c5c4e16` — Rename to Splunk Agent Mesh.**
+   - Directory moves: `server/sentinel_mesh/` → `server/agent_mesh/`,
+     `packages/ai-investigator/` → `packages/agent-mesh/`,
+     `packages/investigations/` → `packages/agent-mesh-ui/`.
+   - Yarn workspaces: `@splunk/agent-mesh`, `@splunk/agent-mesh-ui`.
+   - Splunk app id: `splunk-agent-mesh`.
+   - Python package: `agent_mesh`.
+   - Env vars: `SENTINEL_MESH_*` → `AGENT_MESH_*`.
+
+2. **`2d04b17` — Phase A: backend pivot to conf-driven agents.**
+   - New `server/agent_mesh/conf_reader.py` (`SplunkRestConfReader` primary,
+     `FileConfReader` fallback).
+   - New `server/agent_mesh/agents/agent_config.py` (AgentConfig dataclass).
+   - New `server/agent_mesh/agents/llm_agent.py` (generic LLMAgent — only
+     agent class in the codebase now).
+   - Rewrote `orchestrator.py` around the ConfReader + LLMAgent loop. Agents
+     are independent — each sees only the original request.
+   - New `agents.conf` (default + 7 stanzas) and `README/agents.conf.spec`
+     under the Splunk app.
+   - Response shape change: `{ id, status, agent_order, agents:
+     Record<id, AgentOutput> }`.
+   - New endpoint `GET /api/v1/agents`.
+   - Rewrote `demo/demo_case.py` to per-agent canned markdown.
+   - Deleted all seven per-agent Python classes. Heuristics archived to
+     `docs/legacy/heuristics.md`.
+
+3. **`8b5976f` — Phase B: frontend pivot to per-agent markdown tabs.**
+   - New components: `MarkdownView` (react-markdown + remark-gfm +
+     rehype-sanitize, with a pluggable code-block renderer registry),
+     `AgentTabsPanel`, `AgentStatusBadge`.
+   - Updated `types.ts` with new `AgentDescriptor`, `AgentOutput`, and a
+     reshaped `InvestigationResult`. Legacy types kept for archived
+     components.
+   - Updated `apiClient.ts` to add `getAgents()` and `AbortController`
+     timeouts (30s default, 120s for investigation runs, 5s for health).
+   - Refactored `InvestigationPage`: input card on top, `AgentTabsPanel`
+     below.
+   - Moved 7 legacy components to `components/legacy/`. `tsconfig.json`
+     excludes that subtree.
+   - Rewrote `demoData.ts` to new shape.
+   - Bundle size: 6.38 MiB → 8.23 MiB after adding markdown deps.
+
+### Validated
+- ConfReader (file fallback path) loads all 7 stanzas with non-empty prompts.
+- `GET /api/v1/agents` returns the descriptor list.
+- `POST /api/v1/investigations/run` (demo) returns the new shape; all 7
+  agents populated.
+- `POST /api/v1/investigations/run` without an LLM gracefully marks each
+  agent `status=error` with a clear message.
+- `yarn build` clean (only standard webpack size warnings).
+
+### Known Not-Yet-Done
+
+- LLM providers haven't been live-tested against real API keys.
+- `SplunkRestConfReader` hasn't been live-tested against Splunk Enterprise.
+- `SplunkSecureSettingsStore` is still a stub.
+- `SplunkClient` is still a stub.
+- Splunk app needs to be re-linked under the new name and Splunk restarted
+  for the renamed app to appear.
+
+### Suggested Next Steps for Session 3
+
+1. Live-validate `SplunkRestConfReader` against a running Splunk Enterprise
+   instance.
+2. Install `anthropic` and `openai` and run `POST /api/v1/settings/test`
+   end-to-end against each provider.
+3. Wire `SplunkSecureSettingsStore` to the Passwords API.
+4. Begin Skills system design (see `docs/TODO.md`).

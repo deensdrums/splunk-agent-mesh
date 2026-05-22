@@ -1,61 +1,80 @@
 # Splunk Agent Mesh — TODO
 
-## Immediate Next Steps (Session 2)
+## Immediate (next session)
 
-- [ ] Run `yarn install` and `yarn build` to verify frontend compiles
-- [ ] Run `cd server && pip install -r requirements.txt && uvicorn agent_mesh.app:app --reload` to verify backend starts
-- [ ] Verify demo mode returns correct JSON from `/api/v1/investigations/run` with `demo: true`
-- [ ] Add `react-dom` peer dep to `investigations` package (needed for standalone testing)
-- [ ] Wire frontend API client base URL to be configurable via Splunk app conf or env var
-- [ ] Add unit tests for `AgentRunPanel`, `IncidentTimeline`, `EvidenceTable`
+- [ ] **Validate LLM provider adapters end-to-end** — install `anthropic` and
+  `openai` SDKs, run `POST /api/v1/settings/test` against each provider with a
+  real key. This is the biggest unblocker for a live demo.
+- [ ] **Implement `SplunkSecureSettingsStore`** — three calls against
+  `/services/storage/passwords`. Same auth machinery as `SplunkRestConfReader`.
+- [ ] **Validate `SplunkRestConfReader` against a live Splunk** — ensure
+  `agents.conf` is reachable via REST after the app is deployed.
+- [ ] **Smoke-test the demo in Splunk Web** — confirm the input card +
+  AgentTabsPanel render correctly and the demo button populates all 7 tabs.
 
-## MVP
+## Skills (the next big feature)
 
-- [ ] Real SPL Hunter Agent: generate and run actual Splunk searches
-- [ ] Connect `splunk_client.py` to a real Splunk instance (session key auth)
-- [ ] LLM integration: wire Anthropic provider to TriageAgent and ExecutiveBriefAgent
-- [ ] Settings save/load from backend: test full round-trip (save → test connection → run investigation)
-- [ ] Splunk Passwords API integration in `SplunkSecureSettingsStore`
-- [ ] Load sample CSV data into Splunk as lookups for demo
-- [ ] Add polling/progress endpoint so frontend can show real-time agent progress
-- [ ] MITRE ATT&CK mapping display: add technique links to attack.mitre.org
-- [ ] Entity graph: implement real graph visualization (replace placeholder)
+- [ ] Define a `Skill` interface: name, description, JSON-schema input/output,
+  invoke method.
+- [ ] Built-in skills: `splunk_search` (calls `SplunkClient.search`),
+  `web_search` (optional), `mitre_lookup` (resolves technique ids to canonical
+  names).
+- [ ] `agents.conf`: honor the `skills =` field — the runtime grants the agent
+  access to the listed skills via tool use.
+- [ ] LLM-side: switch to tool-use API for providers that support it (Anthropic
+  `tools`, OpenAI function calling).
+- [ ] Rich rendering: code-block renderers for `spl`, `splunk-chart`,
+  `splunk-table`. Wire into `MarkdownView.codeBlockRenderers`.
 
-## Demo Polish
+## Cross-agent context (v2)
 
-- [ ] Animate agent steps with realistic timing (simulate 2-3 sec per agent)
-- [ ] Add Splunk Agent Mesh logo/branding to header
-- [ ] Add severity color coding (red=critical, orange=high, yellow=medium, green=low)
-- [ ] Add confidence bar visualization
-- [ ] Make response plan items checkable (mark as completed)
-- [ ] Add "Copy SPL" button to detection recommendation
-- [ ] Add "Export PDF" or "Export JSON" for investigation result
-- [ ] Dark mode support via @splunk/themes
+- [ ] Stanza field `depends_on = <agent_id, ...>` so dependent agents see prior
+  outputs.
+- [ ] Orchestrator builds a DAG and runs independent agents in parallel.
 
-## Stretch Goals
+## Streaming (v2)
 
-- [ ] Real-time streaming agent output (SSE or WebSocket)
-- [ ] Investigation history: list and re-open past investigations
-- [ ] Entity graph: interactive D3 or Cytoscape graph of affected entities
-- [ ] Multi-investigation comparison view
-- [ ] Direct Splunk alert action integration: trigger investigation from Notable Event
-- [ ] Slack/Teams notification of investigation complete
-- [ ] Analyst feedback loop: thumbs up/down on agent conclusions
+- [ ] Server-Sent Events or WebSocket endpoint streaming per-agent status and
+  partial markdown as it lands.
+- [ ] Frontend: per-tab progressive rendering of streaming markdown.
 
-## Security Hardening
+## Real Splunk integration
 
-- [ ] Add Splunk session token validation to backend routes
-- [ ] Rate limit `/investigations/run` endpoint
-- [ ] Audit log: record who ran which investigation, when
-- [ ] Validate all SPL before execution (block dangerous commands: `delete`, `rest`)
-- [ ] Add content security policy headers to Mako templates
-- [ ] Penetration test settings endpoint for injection
+- [ ] Implement `SplunkClient.search(spl, time_range)` against
+  `/services/search/jobs` with session-key auth.
+- [ ] Load sample CSV data into Splunk as lookups (`| inputlookup ... |
+  collect index=...`).
+- [ ] Per-request session-token forwarding from the browser, instead of a
+  single backend admin token.
 
-## Packaging / Release
+## Polish
 
-- [ ] Package Python backend as Splunk Custom REST Handler in `appserver/`
-- [ ] Bundle backend dependencies into app via `pip install --target`
-- [ ] Create Splunk app package (`.tar.gz`) via `yarn link:app` + Splunk packaging tools
-- [ ] Write `app.manifest` for Splunkbase submission
-- [ ] Add CI/CD: GitHub Actions for lint, test, build
-- [ ] Write install guide for Splunk Cloud (admin steps)
+- [ ] Animate tab status badges (pulsing for `running`).
+- [ ] Persist active tab in URL hash for deep-linking.
+- [ ] Settings page: list configured agents (read-only) so admins can verify
+  what's wired up.
+- [ ] "Export markdown" button per agent tab.
+- [ ] "Export full investigation" button (concatenated markdown).
+
+## Tests
+
+- [ ] `ConfReader` unit tests — file parser, default merge, line continuation,
+  enabled/disabled handling.
+- [ ] `LLMAgent` unit tests with a mock LLM provider.
+- [ ] Frontend behavior tests: `AgentTabsPanel` renders descriptors, switches
+  tabs on click, surfaces error state.
+- [ ] `MarkdownView` test for the code-block renderer registry.
+
+## Security hardening
+
+- [ ] Validate Splunk session token on every backend request.
+- [ ] Rate limit `/investigations/run`.
+- [ ] Audit log: which user ran which investigation, when, against which agents.
+- [ ] Backend timeouts on LLM calls (per-agent).
+
+## Packaging
+
+- [ ] Package the Python backend as a Splunk Custom REST Handler so it runs
+  inside Splunk.
+- [ ] Build a `.tar.gz` Splunk app via `yarn link:app` + Splunk packaging.
+- [ ] CI: GitHub Actions for `yarn build`, Python imports, basic smoke tests.

@@ -7,7 +7,7 @@ const Card = styled.div`
     border: 1px solid ${variables.borderColor};
     border-radius: 4px;
     padding: ${variables.spacingLarge};
-    max-width: 700px;
+    max-width: 720px;
 `;
 
 const Title = styled.h2`
@@ -48,7 +48,7 @@ const BulletList = styled.ul`
 `;
 
 const InlineCode = styled.code`
-    font-family: ${variables.monoFontFamily};
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
     background: ${variables.backgroundColorSection};
     padding: 1px 5px;
@@ -69,105 +69,90 @@ const WarningBox = styled.div`
 const AboutPage: React.FC = () => (
     <Card>
         <Title>Splunk Agent Mesh</Title>
-        <Tagline>From alert to evidence-backed response in minutes.</Tagline>
+        <Tagline>A configurable agentic platform for Splunk Enterprise.</Tagline>
 
-        <SectionTitle>What Splunk Agent Mesh Does</SectionTitle>
+        <SectionTitle>What it is</SectionTitle>
         <Body>
-            Splunk Agent Mesh is an agentic SOC investigation copilot embedded in Splunk. A SOC analyst describes an
-            alert — a host, a user, a suspicious behavior — and Splunk Agent Mesh launches a multi-step investigation
-            using a team of specialized AI agents.
+            Splunk Agent Mesh runs a mesh of AI agents defined in{' '}
+            <InlineCode>agents.conf</InlineCode>. Each <InlineCode>[agent:&lt;id&gt;]</InlineCode>{' '}
+            stanza configures one node — display name, system prompt, model, order — and the
+            runtime ships a single generic agent class. Adding an agent is a config edit, not a
+            code change.
         </Body>
         <Body>
-            The investigation generates SPL searches, retrieves Splunk data, correlates evidence across sources,
-            builds a timeline, maps behavior to MITRE ATT&CK, scores severity, identifies blast radius, and
-            recommends response actions — all in a few seconds.
+            Each agent receives the user request and writes back to the page in markdown. The UI
+            shows one tab per configured agent.
         </Body>
 
-        <SectionTitle>How AI Is Used</SectionTitle>
+        <SectionTitle>The default SOC mesh</SectionTitle>
         <Body>
-            Splunk Agent Mesh uses a configurable LLM provider (Anthropic Claude, OpenRouter, or any OpenAI-compatible
-            endpoint) to power its agents. Each agent has a defined purpose, input, output, and prompt contract.
+            The bundled <InlineCode>default/agents.conf</InlineCode> ships seven SOC-flavored
+            agents as the first example mesh:
         </Body>
         <BulletList>
             <li>
-                <strong>Triage Agent</strong> — extracts entities and classifies initial severity
+                <strong>Triage</strong> — entity extraction and severity classification
             </li>
             <li>
-                <strong>SPL Hunter Agent</strong> — generates and runs targeted Splunk searches
+                <strong>SPL Hunter</strong> — suggested SPL searches for evidence gathering
             </li>
             <li>
-                <strong>Timeline Agent</strong> — correlates events into a chronological timeline
+                <strong>Timeline</strong> — chronological incident reconstruction
             </li>
             <li>
-                <strong>Blast Radius Agent</strong> — identifies other affected systems
+                <strong>Blast Radius</strong> — exposure and pivot searches
             </li>
             <li>
-                <strong>Detection Gap Agent</strong> — generates reusable Splunk detection logic
+                <strong>Detection Gap</strong> — Splunk detection rule recommendation
             </li>
             <li>
-                <strong>Response Agent</strong> — recommends prioritized response actions
+                <strong>Response</strong> — prioritized actions, all gated on approval
             </li>
             <li>
-                <strong>Executive Brief Agent</strong> — synthesizes findings into a final report
+                <strong>Executive Brief</strong> — leadership summary with MITRE mapping
             </li>
         </BulletList>
 
-        <SectionTitle>How Splunk Data Is Used</SectionTitle>
+        <SectionTitle>Adding or tuning an agent</SectionTitle>
         <Body>
-            Agents query Splunk using SPL searches targeting endpoint, DNS, auth, proxy, and firewall indexes.
-            Every conclusion in the investigation report is tied to evidence retrieved from Splunk — the agents
-            are not permitted to fabricate findings.
-        </Body>
-        <Body>
-            In demo mode, synthetic sample data is used so the app can be evaluated without a live Splunk security
-            data source.
-        </Body>
-
-        <SectionTitle>Human Approval Principle</SectionTitle>
-        <Body>
-            Splunk Agent Mesh never takes automated response actions. All response recommendations require explicit
-            analyst approval before execution. The app is a decision-support tool, not an autonomous responder.
-        </Body>
-        <BulletList>
-            <li>All SPL is visible before execution</li>
-            <li>All agent conclusions show their evidence source</li>
-            <li>All response actions are flagged with approval requirements</li>
-            <li>No action is taken without human sign-off</li>
-        </BulletList>
-
-        <SectionTitle>Demo Dataset</SectionTitle>
-        <Body>
-            The demo mode uses a synthetic scenario: <strong>Suspicious PowerShell on FIN-LAPTOP-22</strong>.
-        </Body>
-        <Body>
-            Attack chain: User <InlineCode>jsmith</InlineCode> opens a suspicious Office document →{' '}
-            <InlineCode>winword.exe</InlineCode> spawns <InlineCode>powershell.exe</InlineCode> with encoded
-            command → host contacts rare domain <InlineCode>cdn-update-check.com</InlineCode> → jsmith accesses
-            finance file server → archive <InlineCode>Q2_finance_exports.zip</InlineCode> is created → 48 MB
-            exfiltrated to external IP.
+            Edit{' '}
+            <InlineCode>
+                packages/agent-mesh/src/main/resources/splunk/default/agents.conf
+            </InlineCode>
+            , add a stanza, reload Splunk. A new tab appears. No backend redeploy, no frontend
+            rebuild.
         </Body>
 
-        <SectionTitle>Backend Requirements</SectionTitle>
+        <SectionTitle>How agents are independent in v1</SectionTitle>
         <Body>
-            Splunk Agent Mesh requires a Python backend service to run agents and LLM calls. In production, this is
-            packaged as a Splunk Custom REST Handler. In local development, run:
+            Each agent sees only the original user request — never another agent&apos;s output.
+            This keeps prompts safe to tune in isolation. Cross-agent context is a planned v2
+            feature behind an explicit <InlineCode>depends_on =</InlineCode> stanza field.
+        </Body>
+
+        <SectionTitle>Human approval principle</SectionTitle>
+        <Body>
+            Splunk Agent Mesh never takes automated actions. Response recommendations are exactly
+            that — recommendations, gated on operator approval.
+        </Body>
+
+        <SectionTitle>Backend</SectionTitle>
+        <Body>
+            FastAPI service on port 8765. Reads <InlineCode>agents.conf</InlineCode> from Splunk
+            via the REST configs API. Run locally with:
         </Body>
         <BulletList>
             <li>
-                <InlineCode>cd server && pip install -r requirements.txt</InlineCode>
+                <InlineCode>cd server &amp;&amp; pip install -r requirements.txt</InlineCode>
             </li>
             <li>
-                <InlineCode>uvicorn agent_mesh.app:app --reload --port 8000</InlineCode>
+                <InlineCode>uvicorn agent_mesh.app:app --reload --port 8765</InlineCode>
             </li>
         </BulletList>
-        <Body>
-            Configure your LLM provider on the Settings tab. Set <InlineCode>AGENT_MESH_API_KEY</InlineCode>{' '}
-            as an environment variable for local development.
-        </Body>
 
         <WarningBox>
-            This app is a hackathon prototype. Do not use in production without security review, proper Splunk
-            packaging, and validated credential storage.
+            This app is a hackathon prototype. Do not use in production without security review,
+            Splunk packaging review, and Passwords-API-backed credential storage.
         </WarningBox>
     </Card>
 );
