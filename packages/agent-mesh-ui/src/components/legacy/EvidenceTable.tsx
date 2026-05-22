@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
-import { EvidenceRecord } from '../types';
+import { EvidenceRecord } from '../../types';
 
 const Panel = styled.div`
     background: ${variables.backgroundColorNavigation};

@@ -1,7 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
-import { AffectedEntities } from '../types';
+import { AffectedEntities } from '../../types';
 
 const Panel = styled.div`
     background: ${variables.backgroundColorNavigation};

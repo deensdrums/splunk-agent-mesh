@@ -2,7 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
-import { AgentStep, AgentStatus } from '../types';
+import { AgentStep, AgentStatus } from '../../types';
 
 const Panel = styled.div`
     background: ${variables.backgroundColorNavigation};

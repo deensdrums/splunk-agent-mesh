@@ -1,24 +1,57 @@
-import { InvestigationRequest, InvestigationResult, LLMSettings, SaveSettingsRequest } from '../types';
+import {
+    AgentDescriptor,
+    InvestigationRequest,
+    InvestigationResult,
+    LLMSettings,
+    SaveSettingsRequest,
+} from '../types';
 
 const BASE_URL =
-    (typeof window !== 'undefined' && (window as any).__AGENT_MESH_API_URL__) || 'http://localhost:8765';
+    (typeof window !== 'undefined' && (window as any).__AGENT_MESH_API_URL__) ||
+    'http://localhost:8765';
 const API_ROOT = `${BASE_URL}/api/v1`;
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${API_ROOT}${path}`, {
-        headers: { 'Content-Type': 'application/json', ...init?.headers },
-        ...init,
-    });
-    if (!res.ok) {
-        const text = await res.text().catch(() => res.statusText);
-        throw new Error(`API ${res.status}: ${text}`);
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+export class ApiTimeoutError extends Error {
+    constructor(ms: number) {
+        super(`Request timed out after ${ms}ms`);
+        this.name = 'ApiTimeoutError';
     }
-    return res.json() as Promise<T>;
+}
+
+async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(`${API_ROOT}${path}`, {
+            headers: { 'Content-Type': 'application/json', ...init?.headers },
+            signal: controller.signal,
+            ...init,
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => res.statusText);
+            throw new Error(`API ${res.status}: ${text}`);
+        }
+        return (await res.json()) as T;
+    } catch (err) {
+        if ((err as Error).name === 'AbortError') {
+            throw new ApiTimeoutError(timeoutMs);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 export const apiClient = {
     runInvestigation(req: InvestigationRequest): Promise<InvestigationResult> {
-        return request('/investigations/run', { method: 'POST', body: JSON.stringify(req) });
+        // Investigation calls hit the LLM and can take a while.
+        return request('/investigations/run', { method: 'POST', body: JSON.stringify(req) }, 120_000);
+    },
+
+    getAgents(): Promise<{ agents: AgentDescriptor[] }> {
+        return request('/agents');
     },
 
     getSettings(): Promise<LLMSettings> {
@@ -38,6 +71,6 @@ export const apiClient = {
     },
 
     healthCheck(): Promise<{ status: string }> {
-        return request('/health');
+        return request('/health', undefined, 5_000);
     },
 };

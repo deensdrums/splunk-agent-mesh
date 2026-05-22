@@ -1,202 +1,183 @@
-import { AgentStep, InvestigationResult } from '../types';
+import { InvestigationResult } from '../types';
 
-export const DEMO_AGENT_STEPS: AgentStep[] = [
-    { name: 'triage', label: 'Triage Agent', status: 'complete', message: 'Entities extracted · Severity: High' },
-    {
-        name: 'spl_hunter',
-        label: 'SPL Hunter Agent',
-        status: 'complete',
-        message: '5 searches run · 47 events retrieved',
-    },
-    { name: 'timeline', label: 'Timeline Agent', status: 'complete', message: '6 events correlated' },
-    {
-        name: 'blast_radius',
-        label: 'Blast Radius Agent',
-        status: 'complete',
-        message: 'FIN-FILE-01 lateral movement confirmed',
-    },
-    {
-        name: 'detection_gap',
-        label: 'Detection Gap Agent',
-        status: 'complete',
-        message: 'Detection rule generated',
-    },
-    { name: 'response', label: 'Response Agent', status: 'complete', message: '4 actions recommended' },
-    {
-        name: 'executive_brief',
-        label: 'Executive Brief',
-        status: 'complete',
-        message: 'Report complete · Confidence: 87%',
-    },
-];
+const DEMO_TIMESTAMP = '2026-05-21T18:00:00+00:00';
+
+function output(id: string, display_name: string, markdown: string) {
+    return {
+        agent_id: id,
+        display_name,
+        status: 'completed' as const,
+        markdown,
+        model: 'claude-sonnet-4-6',
+        started_at: DEMO_TIMESTAMP,
+        completed_at: DEMO_TIMESTAMP,
+        error: null,
+    };
+}
 
 export const DEMO_RESULT: InvestigationResult = {
     id: 'demo-investigation-001',
     status: 'complete',
-    title: 'Suspicious PowerShell on FIN-LAPTOP-22',
-    severity: 'High',
-    confidence: 0.87,
-    summary:
-        'Microsoft Word spawned encoded PowerShell on FIN-LAPTOP-22. The host contacted a rare external domain, accessed a finance file server, created a ZIP archive, and transferred a large amount of data externally.',
-    affected_entities: {
-        users: ['jsmith'],
-        hosts: ['FIN-LAPTOP-22', 'FIN-FILE-01'],
-        domains: ['cdn-update-check.com'],
-        ips: ['185.199.108.153'],
-        files: ['Q2_finance_exports.zip'],
-    },
-    mitre: [
-        {
-            technique_id: 'T1059.001',
-            name: 'PowerShell',
-            confidence: 0.92,
-            evidence: 'powershell.exe launched with encoded command',
-        },
-        {
-            technique_id: 'T1027',
-            name: 'Obfuscated Files or Information',
-            confidence: 0.81,
-            evidence: '-EncodedCommand or -enc observed in command line',
-        },
-        {
-            technique_id: 'T1105',
-            name: 'Ingress Tool Transfer',
-            confidence: 0.76,
-            evidence: 'Host contacted rare external domain after script execution',
-        },
+    started_at: DEMO_TIMESTAMP,
+    completed_at: DEMO_TIMESTAMP,
+    agent_order: [
+        'triage',
+        'spl_hunter',
+        'timeline',
+        'blast_radius',
+        'detection_gap',
+        'response',
+        'executive_brief',
     ],
-    timeline: [
-        {
-            time: '2026-05-18T09:14:10Z',
-            title: 'Suspicious Office document opened',
-            description: 'User jsmith opened a document shortly before process execution.',
-            source: 'endpoint',
-            severity: 'medium',
-        },
-        {
-            time: '2026-05-18T09:16:22Z',
-            title: 'Office spawned encoded PowerShell',
-            description: 'winword.exe launched powershell.exe with an encoded command.',
-            source: 'endpoint',
-            severity: 'high',
-        },
-        {
-            time: '2026-05-18T09:17:03Z',
-            title: 'Rare domain contacted',
-            description: 'FIN-LAPTOP-22 resolved cdn-update-check.com.',
-            source: 'dns',
-            severity: 'high',
-        },
-        {
-            time: '2026-05-18T09:35:44Z',
-            title: 'Finance file server accessed',
-            description: 'jsmith authenticated from FIN-LAPTOP-22 to FIN-FILE-01.',
-            source: 'auth',
-            severity: 'medium',
-        },
-        {
-            time: '2026-05-18T09:41:10Z',
-            title: 'Finance archive created',
-            description: 'Q2_finance_exports.zip was created on the endpoint.',
-            source: 'endpoint',
-            severity: 'high',
-        },
-        {
-            time: '2026-05-18T09:44:39Z',
-            title: 'Large outbound transfer',
-            description: 'Approximately 48 MB was sent to an unusual external IP.',
-            source: 'proxy',
-            severity: 'critical',
-        },
-    ],
-    evidence: [
-        {
-            source: 'endpoint',
-            time: '2026-05-18T09:16:22Z',
-            host: 'FIN-LAPTOP-22',
-            user: 'jsmith',
-            field: 'process_chain',
-            value: 'winword.exe -> powershell.exe',
-            interpretation: 'Office spawning PowerShell is suspicious and often associated with phishing payloads.',
-        },
-        {
-            source: 'endpoint',
-            time: '2026-05-18T09:16:22Z',
-            host: 'FIN-LAPTOP-22',
-            user: 'jsmith',
-            field: 'command_line',
-            value: 'powershell -enc SQBFAFgAKABOAGUAdwAtAE8AYgBqAGUAYwB0...',
-            interpretation: 'Encoded PowerShell indicates obfuscation.',
-        },
-        {
-            source: 'dns',
-            time: '2026-05-18T09:17:03Z',
-            host: 'FIN-LAPTOP-22',
-            user: 'jsmith',
-            field: 'query',
-            value: 'cdn-update-check.com',
-            interpretation: 'Domain is rare in environment — first seen in last 30 days.',
-        },
-        {
-            source: 'auth',
-            time: '2026-05-18T09:35:44Z',
-            host: 'FIN-LAPTOP-22',
-            user: 'jsmith',
-            field: 'dest_host',
-            value: 'FIN-FILE-01',
-            interpretation: 'jsmith accessed finance file server shortly after PowerShell execution.',
-        },
-        {
-            source: 'endpoint',
-            time: '2026-05-18T09:41:10Z',
-            host: 'FIN-LAPTOP-22',
-            user: 'jsmith',
-            field: 'file_name',
-            value: 'Q2_finance_exports.zip',
-            interpretation: 'Archive creation after file server access suggests data staging.',
-        },
-        {
-            source: 'proxy',
-            time: '2026-05-18T09:44:39Z',
-            host: 'FIN-LAPTOP-22',
-            user: 'jsmith',
-            field: 'bytes_out',
-            value: '48593422',
-            interpretation: 'Large outbound transfer after archive creation suggests possible exfiltration.',
-        },
-    ],
-    response_plan: [
-        {
-            action: 'Isolate host',
-            target: 'FIN-LAPTOP-22',
-            risk: 'May interrupt user productivity.',
-            requires_approval: true,
-        },
-        {
-            action: 'Disable active sessions',
-            target: 'jsmith',
-            risk: 'May interrupt legitimate access.',
-            requires_approval: true,
-        },
-        {
-            action: 'Block domain',
-            target: 'cdn-update-check.com',
-            risk: 'Low if domain is confirmed malicious or rare.',
-            requires_approval: true,
-        },
-        {
-            action: 'Hunt across environment',
-            target: 'All hosts',
-            risk: 'Read-only search.',
-            requires_approval: false,
-        },
-    ],
-    detection_recommendation: {
-        title: 'Office-spawned encoded PowerShell',
-        spl: 'index=endpoint process_name=powershell.exe (command_line="*-enc*" OR command_line="*EncodedCommand*") (parent_process_name=winword.exe OR parent_process_name=excel.exe OR parent_process_name=outlook.exe) | stats count min(_time) as first_seen max(_time) as last_seen by host user parent_process_name command_line',
-        description:
-            'Detects suspicious Office child process behavior commonly associated with phishing payload execution.',
-        severity: 'high',
-        mitre: ['T1059.001', 'T1027'],
+    agents: {
+        triage: output(
+            'triage',
+            'Triage',
+            `## Severity: High
+
+The described activity matches a typical post-exploitation chain: a finance laptop executes encoded PowerShell after opening an Office document, then contacts a rare external domain.
+
+## Entities
+
+- **Users**: \`jsmith\`
+- **Hosts**: \`FIN-LAPTOP-22\`, \`FIN-FILE-01\`
+- **Domains**: \`cdn-update-check.com\`
+- **IPs**: \`185.199.108.153\`
+- **Files**: \`Q2_finance_exports.zip\`
+
+## Reasoning
+
+\`winword.exe\` is rarely a legitimate parent of \`powershell.exe\`. The \`-EncodedCommand\` flag is a strong obfuscation signal. Combined with the follow-on DNS to a recently-registered domain, severity is **High**.`
+        ),
+        spl_hunter: output(
+            'spl_hunter',
+            'SPL Hunter',
+            `## Recommended SPL searches
+
+### 1. Encoded PowerShell on the host
+
+\`\`\`spl
+index=endpoint host=FIN-LAPTOP-22 process_name=powershell.exe
+  ("-enc" OR "-EncodedCommand")
+| table _time host user parent_process_name command_line
+\`\`\`
+
+### 2. Rare domain contact post-execution
+
+\`\`\`spl
+index=dns host=FIN-LAPTOP-22
+| stats earliest(_time) AS first_seen, count BY query
+| where first_seen > relative_time(now(), "-30d")
+\`\`\`
+
+### 3. Finance file-server access
+
+\`\`\`spl
+index=auth dest_host=FIN-FILE-01 user=jsmith
+| table _time src_host action
+\`\`\`
+`
+        ),
+        timeline: output(
+            'timeline',
+            'Timeline',
+            `## Incident timeline
+
+| Time (UTC) | Event |
+|---|---|
+| 14:02 | \`jsmith\` opens \`Invoice_Q2.docx\` from email attachment |
+| 14:02 | \`winword.exe\` spawns \`powershell.exe -EncodedCommand <b64>\` |
+| 14:03 | DNS lookup for \`cdn-update-check.com\` (first seen 6 days ago) |
+| 14:05 | Outbound HTTPS to \`185.199.108.153:443\` |
+| 14:08 | \`jsmith\` authenticates to \`FIN-FILE-01\` |
+| 14:11 | \`Q2_finance_exports.zip\` created on \`FIN-LAPTOP-22\` |
+| 14:14 | 48 MB transferred outbound |
+
+The compressed sequence (~12 min) and absence of normal interactive activity between steps strongly suggest scripted execution.`
+        ),
+        blast_radius: output(
+            'blast_radius',
+            'Blast Radius',
+            `## Potential blast radius
+
+### Directly affected
+
+- \`FIN-LAPTOP-22\` — the originating host
+- \`FIN-FILE-01\` — accessed via \`jsmith\` credentials
+- \`jsmith\` — credentials may be exposed
+
+### Recommended pivot searches
+
+- Other hosts that resolved \`cdn-update-check.com\` in the last 7 days
+- Other hosts where \`winword.exe\` spawned \`powershell.exe -enc\` in the last 30 days
+- Any host where \`jsmith\` authenticated since the incident start
+
+### Why this matters
+
+A successful initial access can fan out quickly through shared credentials and lateral movement. The pivot searches above bound the exposure.`
+        ),
+        detection_gap: output(
+            'detection_gap',
+            'Detection Gap',
+            `## Recommended detection
+
+**Title**: Encoded PowerShell spawned by Office application
+
+\`\`\`spl
+index=endpoint process_name=powershell.exe
+  parent_process_name IN ("winword.exe","excel.exe","outlook.exe","powerpnt.exe")
+  ("-enc" OR "-EncodedCommand" OR "-e ")
+| stats count BY host user parent_process_name command_line
+\`\`\`
+
+**Severity**: high
+**MITRE**: T1059.001 (PowerShell), T1027 (Obfuscation)
+
+### Tuning notes
+
+- Exclude known-good signed Office-add-in tooling by \`command_line\` substring.
+- Roll into a notable in Enterprise Security once tuned.`
+        ),
+        response: output(
+            'response',
+            'Response',
+            `## Recommended response actions
+
+> All actions require analyst approval before execution.
+
+1. **Isolate \`FIN-LAPTOP-22\`** from the corporate network.
+   _Approval required: SOC lead._
+2. **Disable \`jsmith\`** in the directory and force password reset.
+   _Approval required: IAM team._
+3. **Collect triage package** from \`FIN-LAPTOP-22\` (memory, prefetch, scheduled tasks, browser history).
+   _Approval required: SOC analyst._
+4. **Block \`cdn-update-check.com\`** at the proxy and \`185.199.108.153\` at the firewall.
+   _Approval required: network team._
+`
+        ),
+        executive_brief: output(
+            'executive_brief',
+            'Executive Brief',
+            `## Executive summary
+
+A finance laptop (\`FIN-LAPTOP-22\`) was used to open a malicious Office document, execute obfuscated PowerShell, contact a newly-observed external domain, access a finance file server with the user's credentials, and exfiltrate roughly 48 MB of data to an external IP.
+
+### Severity: High
+### Confidence: 0.87
+
+### MITRE ATT&CK
+
+- **T1059.001** PowerShell — encoded command invocation
+- **T1027** Obfuscated Files or Information — \`-EncodedCommand\` flag
+- **T1105** Ingress Tool Transfer — rare domain contact post-execution
+- **T1560.001** Archive Collected Data — \`.zip\` of finance exports
+- **T1041** Exfiltration Over C2 Channel — 48 MB outbound transfer
+
+### Recommended next steps
+
+1. Host isolation and credential reset (see Response tab).
+2. Detection rule rollout (see Detection Gap tab).
+3. Blast-radius hunts across last 7 days (see Blast Radius tab).`
+        ),
     },
 };

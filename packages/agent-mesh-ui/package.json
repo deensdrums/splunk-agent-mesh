@@ -22,8 +22,11 @@
   "main": "src/index.ts",
   "dependencies": {
     "@splunk/react-ui": "^5.10.0",
+    "@splunk/splunk-utils": "^3.4.0",
     "@splunk/themes": "^1.7.0",
-    "@splunk/splunk-utils": "^3.4.0"
+    "react-markdown": "^9",
+    "rehype-sanitize": "^6",
+    "remark-gfm": "^4"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",

@@ -12,5 +12,6 @@
     "declaration": true,
     "declarationDir": "./types"
   },
-  "include": ["unit-test-setup-testing-library.ts", "src"]
+  "include": ["unit-test-setup-testing-library.ts", "src"],
+  "exclude": ["src/components/legacy"]
 }

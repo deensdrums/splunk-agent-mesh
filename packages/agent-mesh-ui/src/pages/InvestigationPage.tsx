@@ -1,21 +1,14 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
 import Button from '@splunk/react-ui/Button';
 import TextArea from '@splunk/react-ui/TextArea';
 import Text from '@splunk/react-ui/Text';
-import ColumnLayout from '@splunk/react-ui/ColumnLayout';
 import Message from '@splunk/react-ui/Message';
-import { AgentStep, InvestigationResult, InvestigationRequest } from '../types';
-import AgentRunPanel from '../components/AgentRunPanel';
-import InvestigationSummary from '../components/InvestigationSummary';
-import IncidentTimeline from '../components/IncidentTimeline';
-import EvidenceTable from '../components/EvidenceTable';
-import EntityGraphPlaceholder from '../components/EntityGraphPlaceholder';
-import DetectionRecommendation from '../components/DetectionRecommendation';
-import ResponsePlan from '../components/ResponsePlan';
+import { AgentDescriptor, InvestigationRequest, InvestigationResult } from '../types';
+import AgentTabsPanel from '../components/AgentTabsPanel';
 import { apiClient } from '../services/apiClient';
-import { DEMO_AGENT_STEPS, DEMO_RESULT } from '../demo/demoData';
+import { DEMO_RESULT } from '../demo/demoData';
 
 const FormCard = styled.div`
     background: ${variables.backgroundColorNavigation};
@@ -68,20 +61,6 @@ const DEMO_FORM: InvestigationRequest = {
     demo: true,
 };
 
-const INITIAL_STEPS: AgentStep[] = [
-    { name: 'triage', label: 'Triage Agent', status: 'pending' },
-    { name: 'spl_hunter', label: 'SPL Hunter Agent', status: 'pending' },
-    { name: 'timeline', label: 'Timeline Agent', status: 'pending' },
-    { name: 'blast_radius', label: 'Blast Radius Agent', status: 'pending' },
-    { name: 'detection_gap', label: 'Detection Gap Agent', status: 'pending' },
-    { name: 'response', label: 'Response Agent', status: 'pending' },
-    { name: 'executive_brief', label: 'Executive Brief', status: 'pending' },
-];
-
-function delay(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 const InvestigationPage: React.FC = () => {
     const [description, setDescription] = useState('');
     const [host, setHost] = useState('');
@@ -89,13 +68,21 @@ const InvestigationPage: React.FC = () => {
     const [alertName, setAlertName] = useState('');
     const [timeRange, setTimeRange] = useState('-24h');
     const [running, setRunning] = useState(false);
-    const [agentSteps, setAgentSteps] = useState<AgentStep[]>(INITIAL_STEPS);
     const [result, setResult] = useState<InvestigationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [showAgents, setShowAgents] = useState(false);
-    const resultRef = useRef<HTMLDivElement>(null);
+    const [descriptors, setDescriptors] = useState<AgentDescriptor[]>([]);
 
-    const loadDemo = () => {
+    useEffect(() => {
+        apiClient
+            .getAgents()
+            .then((res) => setDescriptors(res.agents))
+            .catch(() => {
+                // Backend not reachable yet — leave descriptors empty.
+                // The tab panel surfaces a helpful empty state.
+            });
+    }, []);
+
+    const loadDemoForm = () => {
         setDescription(DEMO_FORM.description!);
         setHost(DEMO_FORM.host || '');
         setUser(DEMO_FORM.user || '');
@@ -103,24 +90,10 @@ const InvestigationPage: React.FC = () => {
         setTimeRange(DEMO_FORM.time_range || '-4h');
     };
 
-    const animateDemoSteps = async (steps: AgentStep[]) => {
-        for (let i = 0; i < steps.length; i++) {
-            setAgentSteps((prev) =>
-                prev.map((s, idx) => (idx === i ? { ...s, status: 'running' } : s))
-            );
-            await delay(400);
-            setAgentSteps((prev) =>
-                prev.map((s, idx) => (idx === i ? { ...steps[i], status: 'complete' } : s))
-            );
-        }
-    };
-
     const runInvestigation = async (isDemo: boolean) => {
         setRunning(true);
         setError(null);
         setResult(null);
-        setShowAgents(true);
-        setAgentSteps(INITIAL_STEPS);
 
         try {
             const req: InvestigationRequest = {
@@ -131,19 +104,26 @@ const InvestigationPage: React.FC = () => {
                 time_range: timeRange || undefined,
                 demo: isDemo,
             };
-
-            if (isDemo) {
-                await animateDemoSteps(DEMO_AGENT_STEPS);
-                setResult(DEMO_RESULT);
-            } else {
-                const investigationResult = await apiClient.runInvestigation(req);
-                setResult(investigationResult);
+            const investigationResult = isDemo
+                ? await apiClient
+                      .runInvestigation(req)
+                      .catch(() => DEMO_RESULT) // graceful fallback if backend not reachable in demo
+                : await apiClient.runInvestigation(req);
+            setResult(investigationResult);
+            // Make sure descriptor list reflects whatever the run used.
+            if (descriptors.length === 0 && investigationResult.agent_order.length > 0) {
+                setDescriptors(
+                    investigationResult.agent_order.map((id) => ({
+                        id,
+                        display_name: investigationResult.agents[id]?.display_name || id,
+                        description: '',
+                        order: 0,
+                        enabled: true,
+                    }))
+                );
             }
-
-            setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Investigation failed. Check backend connection.');
-            setAgentSteps((prev) => prev.map((s) => (s.status === 'running' ? { ...s, status: 'error' } : s)));
         } finally {
             setRunning(false);
         }
@@ -166,9 +146,7 @@ const InvestigationPage: React.FC = () => {
                         <FieldLabel>Host</FieldLabel>
                         <Text
                             value={host}
-                            onChange={(_e: unknown, { value }: { value: string }) =>
-                                setHost(value)
-                            }
+                            onChange={(_e: unknown, { value }: { value: string }) => setHost(value)}
                             placeholder="FIN-LAPTOP-22"
                         />
                     </FieldGroup>
@@ -176,9 +154,7 @@ const InvestigationPage: React.FC = () => {
                         <FieldLabel>User</FieldLabel>
                         <Text
                             value={user}
-                            onChange={(_e: unknown, { value }: { value: string }) =>
-                                setUser(value)
-                            }
+                            onChange={(_e: unknown, { value }: { value: string }) => setUser(value)}
                             placeholder="jsmith"
                         />
                     </FieldGroup>
@@ -215,7 +191,7 @@ const InvestigationPage: React.FC = () => {
                         appearance="secondary"
                         disabled={running}
                         onClick={() => {
-                            loadDemo();
+                            loadDemoForm();
                             setTimeout(() => runInvestigation(true), 50);
                         }}
                     />
@@ -225,8 +201,6 @@ const InvestigationPage: React.FC = () => {
                             appearance="secondary"
                             onClick={() => {
                                 setResult(null);
-                                setShowAgents(false);
-                                setAgentSteps(INITIAL_STEPS);
                                 setError(null);
                             }}
                         />
@@ -242,54 +216,7 @@ const InvestigationPage: React.FC = () => {
                 </SectionGap>
             )}
 
-            {showAgents && (
-                <SectionGap>
-                    <ColumnLayout>
-                        <ColumnLayout.Row>
-                            <ColumnLayout.Column span={4}>
-                                <AgentRunPanel steps={agentSteps} />
-                            </ColumnLayout.Column>
-                            <ColumnLayout.Column span={8}>
-                                {result && <InvestigationSummary result={result} />}
-                            </ColumnLayout.Column>
-                        </ColumnLayout.Row>
-                    </ColumnLayout>
-                </SectionGap>
-            )}
-
-            {result && (
-                <div ref={resultRef}>
-                    <SectionGap>
-                        <IncidentTimeline events={result.timeline} />
-                    </SectionGap>
-
-                    <SectionGap>
-                        <ColumnLayout>
-                            <ColumnLayout.Row>
-                                <ColumnLayout.Column span={7}>
-                                    <EvidenceTable evidence={result.evidence} />
-                                </ColumnLayout.Column>
-                                <ColumnLayout.Column span={5}>
-                                    <EntityGraphPlaceholder entities={result.affected_entities} />
-                                </ColumnLayout.Column>
-                            </ColumnLayout.Row>
-                        </ColumnLayout>
-                    </SectionGap>
-
-                    <SectionGap>
-                        <ColumnLayout>
-                            <ColumnLayout.Row>
-                                <ColumnLayout.Column span={6}>
-                                    <ResponsePlan actions={result.response_plan} />
-                                </ColumnLayout.Column>
-                                <ColumnLayout.Column span={6}>
-                                    <DetectionRecommendation data={result.detection_recommendation} />
-                                </ColumnLayout.Column>
-                            </ColumnLayout.Row>
-                        </ColumnLayout>
-                    </SectionGap>
-                </div>
-            )}
+            <AgentTabsPanel descriptors={descriptors} result={result} running={running} />
         </div>
     );
 };

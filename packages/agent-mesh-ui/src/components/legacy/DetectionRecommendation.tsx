@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
 import Button from '@splunk/react-ui/Button';
-import { DetectionRecommendationData } from '../types';
+import { DetectionRecommendationData } from '../../types';
 
 const Panel = styled.div`
     background: ${variables.backgroundColorNavigation};
