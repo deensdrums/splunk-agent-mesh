@@ -24,7 +24,7 @@ def _now_iso() -> str:
 def _format_request(request: dict) -> str:
     """Render the user request as a stable text block for the model."""
     fields = []
-    for key in ("description", "host", "user", "alert_name", "time_range"):
+    for key in ("description", "host", "user", "alert_name", "time_range", "dependency_context"):
         value = request.get(key)
         if value:
             fields.append(f"{key}: {value}")

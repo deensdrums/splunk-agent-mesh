@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from ..agents.agent_config import AgentConfig
+from ..investigation_models import markdown_section
 
 
 _DEMO_TIMESTAMP = "2026-05-21T18:00:00+00:00"
@@ -165,10 +166,15 @@ def _placeholder(display_name: str) -> str:
     return f"_No demo content configured for **{display_name}**._\n"
 
 
-def build_demo_result(agents: list[AgentConfig]) -> dict:
+def build_demo_result(
+    agents: list[AgentConfig],
+    investigation_id: str = "demo-investigation-001",
+    owner: str = "demo-user",
+) -> dict:
     """Build a demo response that mirrors whichever agents are configured."""
     agent_order = [a.id for a in agents]
     outputs: dict[str, dict] = {}
+    sections: list[dict] = []
     for cfg in agents:
         markdown = DEMO_MARKDOWN.get(cfg.id, _placeholder(cfg.display_name))
         outputs[cfg.id] = {
@@ -180,12 +186,18 @@ def build_demo_result(agents: list[AgentConfig]) -> dict:
             "started_at": _DEMO_TIMESTAMP,
             "completed_at": _DEMO_TIMESTAMP,
             "error": None,
+            "artifacts": [],
         }
+        sections.append(markdown_section(f"section-{cfg.id}", cfg.display_name, markdown, cfg.id))
     return {
-        "id": "demo-investigation-001",
+        "id": investigation_id,
+        "owner": owner,
         "status": "complete",
         "started_at": _DEMO_TIMESTAMP,
         "completed_at": _DEMO_TIMESTAMP,
         "agent_order": agent_order,
         "agents": outputs,
+        "sections": sections,
+        "artifacts": [],
+        "audit": [],
     }

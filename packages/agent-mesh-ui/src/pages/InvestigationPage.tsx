@@ -6,7 +6,7 @@ import TextArea from '@splunk/react-ui/TextArea';
 import Text from '@splunk/react-ui/Text';
 import Message from '@splunk/react-ui/Message';
 import { AgentDescriptor, InvestigationRequest, InvestigationResult } from '../types';
-import AgentTabsPanel from '../components/AgentTabsPanel';
+import InvestigationReport from '../components/InvestigationReport';
 import { apiClient } from '../services/apiClient';
 import { DEMO_RESULT } from '../demo/demoData';
 
@@ -90,25 +90,49 @@ const InvestigationPage: React.FC = () => {
         setTimeRange(DEMO_FORM.time_range || '-4h');
     };
 
-    const runInvestigation = async (isDemo: boolean) => {
+    const pollInvestigation = async (id: string): Promise<InvestigationResult> => {
+        const deadline = Date.now() + 120_000;
+        while (Date.now() < deadline) {
+            // eslint-disable-next-line no-await-in-loop
+            const current = await apiClient.getInvestigation(id);
+            setResult(current);
+            if (current.status !== 'running' && current.status !== 'pending') {
+                return current;
+            }
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((resolve) => {
+                setTimeout(resolve, 1500);
+            });
+        }
+        throw new Error('Investigation timed out while waiting for results.');
+    };
+
+    const runInvestigation = async (isDemo: boolean, override?: InvestigationRequest) => {
         setRunning(true);
         setError(null);
         setResult(null);
 
         try {
-            const req: InvestigationRequest = {
-                description,
-                host: host || undefined,
-                user: user || undefined,
-                alert_name: alertName || undefined,
-                time_range: timeRange || undefined,
-                demo: isDemo,
-            };
-            const investigationResult = isDemo
-                ? await apiClient
+            const req: InvestigationRequest =
+                override || {
+                    description,
+                    host: host || undefined,
+                    user: user || undefined,
+                    alert_name: alertName || undefined,
+                    time_range: timeRange || undefined,
+                    demo: isDemo,
+                };
+            const start = await apiClient.startInvestigation(req).catch(async (startErr) => {
+                if (isDemo) {
+                    return null;
+                }
+                throw startErr;
+            });
+            const investigationResult = start
+                ? await pollInvestigation(start.id)
+                : await apiClient
                       .runInvestigation(req)
-                      .catch(() => DEMO_RESULT) // graceful fallback if backend not reachable in demo
-                : await apiClient.runInvestigation(req);
+                      .catch(() => DEMO_RESULT); // graceful fallback if backend not reachable in demo
             setResult(investigationResult);
             // Make sure descriptor list reflects whatever the run used.
             if (descriptors.length === 0 && investigationResult.agent_order.length > 0) {
@@ -192,7 +216,7 @@ const InvestigationPage: React.FC = () => {
                         disabled={running}
                         onClick={() => {
                             loadDemoForm();
-                            setTimeout(() => runInvestigation(true), 50);
+                            setTimeout(() => runInvestigation(true, DEMO_FORM), 50);
                         }}
                     />
                     {result && (
@@ -216,7 +240,7 @@ const InvestigationPage: React.FC = () => {
                 </SectionGap>
             )}
 
-            <AgentTabsPanel descriptors={descriptors} result={result} running={running} />
+            <InvestigationReport descriptors={descriptors} result={result} running={running} />
         </div>
     );
 };

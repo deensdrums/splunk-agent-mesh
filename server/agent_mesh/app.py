@@ -2,14 +2,17 @@
 
 import logging
 import re
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
-from .config import CORS_ORIGINS, LOG_LEVEL
+from .config import CORS_ORIGINS, LOG_LEVEL, SPLUNK_HOST, SPLUNK_TOKEN
 from .conf_reader import get_conf_reader
+from .job_store import JOB_STORE
+from .request_context import RequestContext, context_from_request
 from .settings_store import get_settings_store
+from .splunk_client import DemoSplunkClient, SplunkClient
 from .security import is_safe_model_name, is_safe_url, redact_key
 from .agents.orchestrator import Orchestrator
 
@@ -171,15 +174,81 @@ def list_agents():
 
 
 @app.post("/api/v1/investigations/run")
-def run_investigation(req: InvestigationRequest):
+def run_investigation(req: InvestigationRequest, http_request: Request):
     if not req.description.strip() and not req.demo:
         raise HTTPException(status_code=400, detail="description is required.")
 
+    context = context_from_request(http_request)
+    orchestrator = _build_orchestrator(req.demo, context)
+    result = orchestrator.run(req.model_dump())
+    return result
+
+
+@app.post("/api/v1/investigations/start")
+def start_investigation(req: InvestigationRequest, http_request: Request):
+    if not req.description.strip() and not req.demo:
+        raise HTTPException(status_code=400, detail="description is required.")
+
+    context = context_from_request(http_request)
+    payload = req.model_dump()
+
+    def runner(
+        run_payload: dict,
+        run_context: RequestContext,
+        investigation_id: str,
+        progress_callback,
+    ) -> dict:
+        orchestrator = _build_orchestrator(bool(run_payload.get("demo")), run_context)
+        return orchestrator.run(
+            run_payload,
+            investigation_id=investigation_id,
+            progress_callback=progress_callback,
+        )
+
+    job = JOB_STORE.create(payload, context, runner)
+    return {
+        "id": job["id"],
+        "status": job["status"],
+        "owner": job["owner"],
+        "started_at": job["started_at"],
+    }
+
+
+@app.get("/api/v1/investigations/{investigation_id}/status")
+def get_investigation_status(investigation_id: str, http_request: Request):
+    context = context_from_request(http_request)
+    status = JOB_STORE.status(investigation_id, username=context.username)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    return status
+
+
+@app.post("/api/v1/investigations/{investigation_id}/cancel")
+def cancel_investigation(investigation_id: str, http_request: Request):
+    context = context_from_request(http_request)
+    job = JOB_STORE.cancel(investigation_id, username=context.username)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    return {"id": investigation_id, "status": job["status"], "completed_at": job.get("completed_at")}
+
+
+@app.get("/api/v1/investigations/{investigation_id}")
+def get_investigation(investigation_id: str, http_request: Request):
+    context = context_from_request(http_request)
+    job = JOB_STORE.get(investigation_id, username=context.username)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Investigation not found.")
+    return job
+
+
+# ---- Helpers ----
+
+def _build_orchestrator(is_demo: bool, context: RequestContext) -> Orchestrator:
     store = get_settings_store()
     cfg = store.get_provider_settings()
 
     llm = None
-    if not req.demo:
+    if not is_demo:
         key = store.get_api_key()
         if key:
             llm = _build_provider(
@@ -189,17 +258,21 @@ def run_investigation(req: InvestigationRequest):
                 cfg.get("base_url", ""),
             )
 
-    orchestrator = Orchestrator(conf_reader=get_conf_reader(), llm_provider=llm)
-    result = orchestrator.run(req.model_dump())
-    return result
+    return Orchestrator(
+        conf_reader=get_conf_reader(),
+        llm_provider=llm,
+        context=context,
+        splunk_client_factory=lambda: _build_splunk_client(is_demo, context),
+    )
 
 
-@app.get("/api/v1/investigations/{investigation_id}")
-def get_investigation(investigation_id: str):
-    raise HTTPException(status_code=501, detail="Investigation history not yet implemented.")
-
-
-# ---- Helpers ----
+def _build_splunk_client(is_demo: bool, context: RequestContext) -> SplunkClient | None:
+    if is_demo:
+        return DemoSplunkClient()
+    token = context.splunk_token or SPLUNK_TOKEN
+    if not token:
+        return None
+    return SplunkClient(SPLUNK_HOST, token)
 
 def _build_provider(provider: str, key: str, model: str, base_url: str):
     if provider == "anthropic":

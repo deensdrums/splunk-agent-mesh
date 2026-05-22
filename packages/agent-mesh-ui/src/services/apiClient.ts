@@ -2,6 +2,8 @@ import {
     AgentDescriptor,
     InvestigationRequest,
     InvestigationResult,
+    InvestigationStartResponse,
+    InvestigationStatus,
     LLMSettings,
     SaveSettingsRequest,
 } from '../types';
@@ -48,6 +50,22 @@ export const apiClient = {
     runInvestigation(req: InvestigationRequest): Promise<InvestigationResult> {
         // Investigation calls hit the LLM and can take a while.
         return request('/investigations/run', { method: 'POST', body: JSON.stringify(req) }, 120_000);
+    },
+
+    startInvestigation(req: InvestigationRequest): Promise<InvestigationStartResponse> {
+        return request('/investigations/start', { method: 'POST', body: JSON.stringify(req) }, 30_000);
+    },
+
+    getInvestigationStatus(id: string): Promise<InvestigationStatus> {
+        return request(`/investigations/${encodeURIComponent(id)}/status`, undefined, 10_000);
+    },
+
+    getInvestigation(id: string): Promise<InvestigationResult> {
+        return request(`/investigations/${encodeURIComponent(id)}`, undefined, 30_000);
+    },
+
+    cancelInvestigation(id: string): Promise<{ id: string; status: InvestigationResult['status']; completed_at?: string }> {
+        return request(`/investigations/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: '{}' });
     },
 
     getAgents(): Promise<{ agents: AgentDescriptor[] }> {

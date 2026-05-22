@@ -48,5 +48,9 @@ order = <integer>
 * the tab list. Ties broken alphabetically by id. Default: 100.
 
 skills = <comma-separated list>
-* Reserved for future use. Lists named skills the agent may invoke (e.g.
-* splunk_search, web_search). Parsed but ignored in v1.
+* Lists named skills the agent may invoke. The first supported skill is
+* splunk_search.
+
+depends_on = <comma-separated list>
+* Optional list of agent ids that must complete before this agent runs.
+* Dependent agents receive prior agent summaries and artifact metadata.

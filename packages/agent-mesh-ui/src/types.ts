@@ -2,7 +2,8 @@ export type LLMProvider = 'anthropic' | 'openrouter' | 'openai_compatible';
 
 // ===== New agent-mesh shape =====
 
-export type AgentRunStatus = 'pending' | 'running' | 'completed' | 'error';
+export type AgentRunStatus = 'pending' | 'running' | 'completed' | 'error' | 'cancelled';
+export type VisualizationKind = 'table' | 'timechart' | 'bar' | 'single';
 
 export interface AgentDescriptor {
     id: string;
@@ -10,6 +11,8 @@ export interface AgentDescriptor {
     description: string;
     order: number;
     enabled: boolean;
+    skills?: string[];
+    depends_on?: string[];
 }
 
 export interface AgentOutput {
@@ -21,15 +24,64 @@ export interface AgentOutput {
     started_at?: string;
     completed_at?: string;
     error?: string | null;
+    artifacts?: string[];
+}
+
+export interface InvestigationSection {
+    id: string;
+    type: 'markdown';
+    title: string;
+    agent_id?: string | null;
+    markdown: string;
+}
+
+export interface VisualizationSpec {
+    kind: VisualizationKind;
+    reason: string;
+}
+
+export interface SearchArtifact {
+    id: string;
+    type: 'splunk_search';
+    agent_id: string;
+    title: string;
+    spl: string;
+    earliest: string;
+    latest: string;
+    sid?: string | null;
+    status: 'pending' | 'running' | 'done' | 'error';
+    fields: string[];
+    rows: Record<string, unknown>[];
+    messages?: string[];
+    error?: string | null;
+    started_at?: string;
+    completed_at?: string | null;
+    visualization: VisualizationSpec;
+}
+
+export type Artifact = SearchArtifact;
+
+export interface AuditEvent {
+    type: string;
+    investigation_id: string;
+    username: string;
+    status: string;
+    timestamp: string;
+    details?: Record<string, unknown>;
 }
 
 export interface InvestigationResult {
     id: string;
-    status: 'pending' | 'running' | 'complete' | 'error';
+    owner?: string;
+    status: 'pending' | 'running' | 'complete' | 'error' | 'cancelled';
     started_at?: string;
     completed_at?: string;
     agent_order: string[];
     agents: Record<string, AgentOutput>;
+    sections?: InvestigationSection[];
+    artifacts?: Artifact[];
+    audit?: AuditEvent[];
+    error?: string | null;
 }
 
 export interface InvestigationRequest {
@@ -39,6 +91,25 @@ export interface InvestigationRequest {
     alert_name?: string;
     time_range?: string;
     demo?: boolean;
+}
+
+export interface InvestigationStartResponse {
+    id: string;
+    status: InvestigationResult['status'];
+    owner?: string;
+    started_at?: string;
+}
+
+export interface InvestigationStatus {
+    id: string;
+    owner?: string;
+    status: InvestigationResult['status'];
+    started_at?: string;
+    completed_at?: string | null;
+    agent_order: string[];
+    agents: Record<string, Pick<AgentOutput, 'agent_id' | 'display_name' | 'status' | 'started_at' | 'completed_at' | 'error'>>;
+    artifact_count: number;
+    error?: string | null;
 }
 
 export interface LLMSettings {

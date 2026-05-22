@@ -12,6 +12,7 @@ const STATUS_LABEL: Record<AgentRunStatus, string> = {
     running: 'running',
     completed: 'done',
     error: 'error',
+    cancelled: 'cancelled',
 };
 
 const variantStyles = {
@@ -30,6 +31,10 @@ const variantStyles = {
     error: css`
         background: ${variables.statusColorHigh};
         color: ${variables.contentColorActive};
+    `,
+    cancelled: css`
+        background: ${variables.backgroundColorSidebar};
+        color: ${variables.contentColorMuted};
     `,
 };
 
