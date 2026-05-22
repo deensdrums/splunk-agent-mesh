@@ -9,6 +9,15 @@ shows up as a new tab.
 
 ---
 
+**Run the python agent server for testing.**
+
+```
+cd server/
+python3 -m uvicorn agent_mesh.app:app --port 8765
+```
+
+---
+
 ## How it works
 
 ```
