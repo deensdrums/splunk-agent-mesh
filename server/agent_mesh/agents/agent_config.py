@@ -16,3 +16,4 @@ class AgentConfig:
     enabled: bool = True
     output_format: str = "markdown"
     skills: list[str] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)

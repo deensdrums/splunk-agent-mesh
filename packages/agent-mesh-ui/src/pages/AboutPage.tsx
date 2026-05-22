@@ -80,8 +80,9 @@ const AboutPage: React.FC = () => (
             code change.
         </Body>
         <Body>
-            Each agent receives the user request and writes back to the page in markdown. The UI
-            shows one tab per configured agent.
+            Agents write narrative markdown and structured artifacts back to a merged
+            investigation report. SPL-producing agents can attach search artifacts for inline
+            table or chart rendering.
         </Body>
 
         <SectionTitle>The default SOC mesh</SectionTitle>
@@ -119,15 +120,15 @@ const AboutPage: React.FC = () => (
             <InlineCode>
                 packages/agent-mesh/src/main/resources/splunk/default/agents.conf
             </InlineCode>
-            , add a stanza, reload Splunk. A new tab appears. No backend redeploy, no frontend
-            rebuild.
+            , add a stanza, reload Splunk. The agent appears in the investigation report. No
+            backend redeploy, no frontend rebuild.
         </Body>
 
-        <SectionTitle>How agents are independent in v1</SectionTitle>
+        <SectionTitle>How agents coordinate</SectionTitle>
         <Body>
-            Each agent sees only the original user request — never another agent&apos;s output.
-            This keeps prompts safe to tune in isolation. Cross-agent context is a planned v2
-            feature behind an explicit <InlineCode>depends_on =</InlineCode> stanza field.
+            Agents are independent by default. Add an explicit{' '}
+            <InlineCode>depends_on =</InlineCode> stanza field when one agent should receive
+            prior agent summaries and artifact metadata.
         </Body>
 
         <SectionTitle>Human approval principle</SectionTitle>

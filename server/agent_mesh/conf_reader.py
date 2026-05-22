@@ -75,6 +75,7 @@ def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig |
         enabled=_coerce_bool(merged.get("enabled"), True),
         output_format=merged.get("output_format", "markdown"),
         skills=_coerce_list(merged.get("skills")),
+        depends_on=_coerce_list(merged.get("depends_on")),
     )
 
 
