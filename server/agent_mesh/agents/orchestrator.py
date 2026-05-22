@@ -1,69 +1,64 @@
-"""Agent orchestrator. Runs agents sequentially and aggregates results."""
+"""Agent orchestrator. Reads enabled agents from agents.conf and runs each one.
 
-import copy
+Agents are independent in v1: each sees only the original request, not other
+agents' outputs. They run sequentially server-side (a parallel implementation
+would be a straightforward future improvement).
+"""
+
+from __future__ import annotations
+
 import logging
-from ..demo.demo_case import DEMO_RESULT
-from .triage_agent import TriageAgent
-from .spl_hunter_agent import SPLHunterAgent
-from .timeline_agent import TimelineAgent
-from .blast_radius_agent import BlastRadiusAgent
-from .detection_gap_agent import DetectionGapAgent
-from .response_agent import ResponseAgent
-from .executive_brief_agent import ExecutiveBriefAgent
+from datetime import datetime, timezone
+
+from ..conf_reader import ConfReader
+from ..demo.demo_case import build_demo_result
+from ..llm.base import LLMProvider
+from .llm_agent import LLMAgent
 
 logger = logging.getLogger(__name__)
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 class Orchestrator:
-    def __init__(self, llm_provider=None, splunk_client=None):
+    def __init__(self, conf_reader: ConfReader, llm_provider: LLMProvider | None = None):
+        self.conf_reader = conf_reader
         self.llm = llm_provider
-        self.splunk = splunk_client
 
-    def run(self, request: dict) -> dict:
-        if request.get("demo"):
-            logger.info("Demo mode: returning static result.")
-            return copy.deepcopy(DEMO_RESULT)
-
-        errors: list[str] = []
-        context: dict = {"request": request, "events": [], "timeline": [], "entities": {}}
-
-        agents = [
-            TriageAgent(self.llm),
-            SPLHunterAgent(self.llm, self.splunk),
-            TimelineAgent(self.llm),
-            BlastRadiusAgent(self.llm, self.splunk),
-            DetectionGapAgent(self.llm),
-            ResponseAgent(self.llm),
-            ExecutiveBriefAgent(self.llm),
+    def get_agent_descriptors(self) -> list[dict]:
+        """Public-facing list of configured agents (no system prompts)."""
+        return [
+            {
+                "id": a.id,
+                "display_name": a.display_name,
+                "description": a.description,
+                "order": a.order,
+                "enabled": a.enabled,
+            }
+            for a in self.conf_reader.get_agents()
         ]
 
-        for agent in agents:
-            try:
-                result = agent.run(context)
-                context.update(result)
-            except Exception as e:
-                error_msg = f"{agent.__class__.__name__} failed: {e}"
-                logger.error(error_msg)
-                errors.append(error_msg)
+    def run(self, request: dict) -> dict:
+        agents = self.conf_reader.get_agents()
+        agent_order = [a.id for a in agents]
 
-        return self._build_result(context, errors)
+        if request.get("demo"):
+            logger.info("Demo mode: returning canned per-agent markdown.")
+            return build_demo_result(agents)
 
-    def _build_result(self, ctx: dict, errors: list[str]) -> dict:
+        started = _now_iso()
+        outputs: dict[str, dict] = {}
+        for cfg in agents:
+            agent = LLMAgent(cfg, self.llm)
+            outputs[cfg.id] = agent.run(request)
+
         return {
-            "id": ctx.get("investigation_id", "inv-001"),
+            "id": request.get("investigation_id", "inv-001"),
             "status": "complete",
-            "title": ctx.get("title", "Investigation Complete"),
-            "severity": ctx.get("severity", "Unknown"),
-            "confidence": ctx.get("confidence", 0.0),
-            "summary": ctx.get("summary", "Investigation complete. See evidence for details."),
-            "affected_entities": ctx.get("entities", {}),
-            "mitre": ctx.get("mitre", []),
-            "timeline": ctx.get("timeline", []),
-            "evidence": ctx.get("evidence", []),
-            "response_plan": ctx.get("response_plan", []),
-            "detection_recommendation": ctx.get(
-                "detection_recommendation",
-                {"title": "No detection generated", "spl": "", "description": "", "severity": "low", "mitre": []},
-            ),
-            "agent_errors": errors,
+            "started_at": started,
+            "completed_at": _now_iso(),
+            "agent_order": agent_order,
+            "agents": outputs,
         }

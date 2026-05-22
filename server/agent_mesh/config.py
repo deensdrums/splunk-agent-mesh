@@ -1,6 +1,8 @@
 """Runtime configuration loaded from environment."""
 
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,9 +23,18 @@ CORS_ORIGINS: list[str] = [
     if o.strip()
 ]
 
-# Splunk REST API base URL (used by splunk_client.py)
+# Splunk REST API base URL.
 SPLUNK_HOST: str = os.getenv("SPLUNK_HOST", "https://localhost:8089")
 SPLUNK_TOKEN: str = os.getenv("SPLUNK_TOKEN", "")
+
+# Splunk app id — used to scope REST calls (configs, passwords, search).
+SPLUNK_APP_ID: str = os.getenv("AGENT_MESH_SPLUNK_APP_ID", "splunk-agent-mesh")
+
+# Paths to agents.conf for the FileConfReader fallback. Later paths override earlier.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_APP_DEFAULT_CONF = _REPO_ROOT / "packages" / "agent-mesh" / "src" / "main" / "resources" / "splunk" / "default" / "agents.conf"
+_APP_LOCAL_CONF = _REPO_ROOT / "packages" / "agent-mesh" / "src" / "main" / "resources" / "splunk" / "local" / "agents.conf"
+AGENTS_CONF_PATHS: list[Path] = [_APP_DEFAULT_CONF, _APP_LOCAL_CONF]
 
 # Log level
 LOG_LEVEL: str = os.getenv("AGENT_MESH_LOG_LEVEL", "INFO")

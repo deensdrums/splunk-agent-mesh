@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
 from .config import CORS_ORIGINS, LOG_LEVEL
+from .conf_reader import get_conf_reader
 from .settings_store import get_settings_store
 from .security import is_safe_model_name, is_safe_url, redact_key
 from .agents.orchestrator import Orchestrator
@@ -148,6 +149,17 @@ def clear_credentials():
     return {"cleared": True}
 
 
+@app.get("/api/v1/agents")
+def list_agents():
+    """Configured agents (id, display_name, description, order, enabled).
+
+    No system prompts in the response — the frontend doesn't need them and
+    they can be long.
+    """
+    orchestrator = Orchestrator(conf_reader=get_conf_reader())
+    return {"agents": orchestrator.get_agent_descriptors()}
+
+
 @app.post("/api/v1/investigations/run")
 def run_investigation(req: InvestigationRequest):
     if not req.description.strip() and not req.demo:
@@ -157,17 +169,17 @@ def run_investigation(req: InvestigationRequest):
     cfg = store.get_provider_settings()
 
     llm = None
-    splunk = None
-
     if not req.demo:
         key = store.get_api_key()
         if key:
-            llm = _build_provider(cfg.get("provider", "anthropic"), key, cfg.get("model", ""), cfg.get("base_url", ""))
+            llm = _build_provider(
+                cfg.get("provider", "anthropic"),
+                key,
+                cfg.get("model", ""),
+                cfg.get("base_url", ""),
+            )
 
-        from .splunk_client import DemoSplunkClient
-        splunk = DemoSplunkClient()
-
-    orchestrator = Orchestrator(llm_provider=llm, splunk_client=splunk)
+    orchestrator = Orchestrator(conf_reader=get_conf_reader(), llm_provider=llm)
     result = orchestrator.run(req.model_dump())
     return result
 
