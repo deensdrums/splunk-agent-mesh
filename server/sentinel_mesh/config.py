@@ -14,7 +14,10 @@ USE_SPLUNK_STORE: bool = os.getenv("SENTINEL_MESH_USE_SPLUNK_STORE", "0") == "1"
 
 # CORS origin(s) for the frontend. Comma-separated list.
 CORS_ORIGINS: list[str] = [
-    o.strip() for o in os.getenv("SENTINEL_MESH_CORS_ORIGINS", "http://localhost:8080,http://localhost:3000").split(",")
+    o.strip() for o in os.getenv(
+        "SENTINEL_MESH_CORS_ORIGINS",
+        "http://localhost:8000,http://localhost:8080,http://localhost:3000",
+    ).split(",")
     if o.strip()
 ]
 
