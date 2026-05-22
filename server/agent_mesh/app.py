@@ -104,6 +104,7 @@ def get_settings():
         "base_url": cfg.get("base_url"),
         "model": cfg.get("model", "claude-sonnet-4-6"),
         "api_key_configured": store.api_key_configured(),
+        "storage_backend": type(store).__name__,
     }
 
 
@@ -117,9 +118,14 @@ def save_settings(req: SaveSettingsRequest):
             logger.info("API key stored (redacted: %s).", redact_key(req.api_key))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except RuntimeError as e:
+        # Storage-backend errors (e.g. Splunk REST returned non-2xx). Surface
+        # the underlying message so the user can act on it.
+        logger.error("Settings save failed via %s: %s", type(store).__name__, e)
+        raise HTTPException(status_code=502, detail=f"Storage backend error: {e}")
     except Exception as e:
-        logger.error("Settings save failed: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to save settings.")
+        logger.exception("Settings save failed unexpectedly.")
+        raise HTTPException(status_code=500, detail=f"Failed to save settings: {e}")
     return {"saved": True, "api_key_configured": store.api_key_configured()}
 
 
@@ -145,7 +151,11 @@ def test_connection():
 @app.delete("/api/v1/settings/credentials")
 def clear_credentials():
     store = get_settings_store()
-    store.clear_api_key()
+    try:
+        store.clear_api_key()
+    except RuntimeError as e:
+        logger.error("Clear credentials failed via %s: %s", type(store).__name__, e)
+        raise HTTPException(status_code=502, detail=f"Storage backend error: {e}")
     return {"cleared": True}
 
 

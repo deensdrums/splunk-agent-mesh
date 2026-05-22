@@ -10,9 +10,23 @@ load_dotenv()
 # Set AGENT_MESH_DEV_MODE=1 to allow DevSettingsStore to accept keys.
 DEV_MODE: bool = os.getenv("AGENT_MESH_DEV_MODE", "0") == "1"
 
-# Set AGENT_MESH_USE_SPLUNK_STORE=1 to opt in to the (unimplemented) Splunk
-# Passwords-API-backed store. Until that store is wired up, leave this off.
-USE_SPLUNK_STORE: bool = os.getenv("AGENT_MESH_USE_SPLUNK_STORE", "0") == "1"
+# By default the Splunk Passwords store activates whenever SPLUNK_TOKEN is set.
+# AGENT_MESH_USE_SPLUNK_STORE can override that explicitly:
+#   "1" / "true" / "yes" -> force Splunk store (still requires SPLUNK_TOKEN)
+#   "0" / "false" / "no" -> force dev store even when SPLUNK_TOKEN is set
+#   unset                -> auto (Splunk if token, dev otherwise)
+def _parse_override(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    v = value.strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+USE_SPLUNK_STORE_OVERRIDE: bool | None = _parse_override(os.getenv("AGENT_MESH_USE_SPLUNK_STORE"))
 
 # CORS origin(s) for the frontend. Comma-separated list.
 CORS_ORIGINS: list[str] = [

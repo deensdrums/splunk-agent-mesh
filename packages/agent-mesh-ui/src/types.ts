@@ -46,6 +46,7 @@ export interface LLMSettings {
     base_url?: string;
     model: string;
     api_key_configured: boolean;
+    storage_backend?: string;
 }
 
 export interface SaveSettingsRequest {

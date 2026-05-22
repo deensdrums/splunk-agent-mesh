@@ -2,9 +2,9 @@
 
 ## How LLM Provider Settings Are Stored
 
-Non-secret settings (provider name, base URL, model name) are stored in:
-- **MVP (local dev)**: In-process dictionary, persisted to a local `settings.json` under `server/` (gitignored)
-- **Production Splunk**: `$SPLUNK_HOME/etc/apps/splunk-agent-mesh/local/agent_mesh.conf` via Splunk's conf API
+Non-secret settings (provider name, base URL, model name) are persisted to a
+local JSON file alongside the backend (`server/.agent_mesh_settings.json`,
+gitignored). They aren't secrets so they don't need a Splunk round-trip.
 
 ## How API Keys Are Stored
 
@@ -12,62 +12,88 @@ API keys go through a `SettingsStore` abstraction:
 
 ```
 SettingsStore (abstract)
-├── SplunkSecureSettingsStore   ← production: Splunk Passwords API (encrypted at rest)
-└── DevSettingsStore            ← local dev only: env var or refuses plaintext
+├── SplunkSecureSettingsStore   ← used when SPLUNK_TOKEN is set
+└── DevSettingsStore            ← fallback when SPLUNK_TOKEN is absent
 ```
 
+The factory `get_settings_store()` activates `SplunkSecureSettingsStore`
+whenever `SPLUNK_TOKEN` is set. To force the dev store even with a token
+present (offline testing), set `AGENT_MESH_USE_SPLUNK_STORE=0`.
+
 ### SplunkSecureSettingsStore
-Uses `POST /services/storage/passwords` to store the API key encrypted by Splunk's credential storage. The key is retrieved via `GET /services/storage/passwords/<realm>:<name>:` at request time. The raw key is never written to disk in plaintext.
+
+Uses Splunk's REST Passwords API to store and retrieve the LLM key:
+
+| Operation | Endpoint |
+|---|---|
+| Create | `POST /servicesNS/nobody/splunk-agent-mesh/storage/passwords` (form: `name=llm_api_key&realm=agent_mesh&password=...`) |
+| Update | `POST /servicesNS/nobody/splunk-agent-mesh/storage/passwords/agent_mesh:llm_api_key:` (form: `password=...`) |
+| Read   | `GET  /servicesNS/nobody/splunk-agent-mesh/storage/passwords/agent_mesh:llm_api_key:?output_mode=json` |
+| Delete | `DELETE /servicesNS/nobody/splunk-agent-mesh/storage/passwords/agent_mesh:llm_api_key:` |
+
+Authentication: `Authorization: Bearer <SPLUNK_TOKEN>`. The token is a Splunk
+admin token (create via Splunk Web: **Settings → Tokens**) with the
+capabilities listed below.
+
+`store_api_key()` tries update first and falls back to create on 404, so the
+same call handles both new entries and overwrites.
 
 ### DevSettingsStore
-Reads from the `AGENT_MESH_API_KEY` environment variable. Refuses to store a plaintext key unless `AGENT_MESH_DEV_MODE=1` is also set. If `DEV_MODE` is not set and no env var key is found, the store returns `api_key_configured: false`.
 
-## Which Splunk Capabilities May Be Required
+Reads from the `AGENT_MESH_API_KEY` environment variable. Refuses to store a
+plaintext key to disk unless `AGENT_MESH_DEV_MODE=1` is explicitly set.
 
-For production deployment:
-- `admin_all_objects` or `list_storage_passwords` — read stored credentials
-- `edit_storage_passwords` — write credentials
-- `search` — run SPL searches on behalf of the user
-- `rest_apps_management` — if registering custom REST endpoint
+## Required Splunk Capabilities
+
+For the backend's `SPLUNK_TOKEN`:
+
+- `list_storage_passwords` — read stored credentials
+- `edit_storage_passwords` — write/delete credentials
+- `rest_properties_get` / `rest_properties_set` — read/write conf via REST (for `agents.conf` access)
+
+The simplest path is to issue the token to an `admin` role user.
 
 ## How the Settings Page Works
 
-1. User opens Settings tab in Splunk Agent Mesh.
-2. User selects provider (Anthropic / OpenRouter / Custom).
-3. User enters base URL (if Custom), model name, and API key.
+1. User opens **Settings** in Splunk Agent Mesh.
+2. UI calls `GET /api/v1/settings` — response includes `storage_backend`
+   so the UI can tell the user whether Splunk Passwords or Dev mode is active.
+3. User picks provider, model, base URL (if custom), and pastes API key.
 4. User clicks **Save**.
-5. Frontend calls `POST /api/v1/settings` with all fields.
-6. Backend:
-   a. Validates provider, base URL, model name format.
-   b. Stores provider/base URL/model in conf (non-secret).
-   c. Passes API key to `SettingsStore.store_api_key()`.
-   d. Returns `{ "saved": true, "api_key_configured": true }`.
-7. Frontend shows "API key configured" badge. Key is NOT displayed again.
+5. UI calls `POST /api/v1/settings` with all fields.
+6. Backend validates inputs (Pydantic validators on provider/model/base_url).
+7. Backend persists provider settings to the local JSON file.
+8. Backend stores the API key via the active `SettingsStore`.
+9. Backend returns `{ "saved": true, "api_key_configured": true }`.
+10. UI shows the success message; the API key field clears.
 
 ## What Must Never Be Logged
 
-- API keys (full or partial, except redacted form)
-- Session tokens
-- Splunk credentials
+- API keys (full or partial, except redacted form via `security.redact_key`)
+- Splunk session keys or admin tokens
 - Any `Authorization` header values
 
 ## Redaction Requirements
 
-The `security.py` module provides `redact_key(key)` → returns first 4 chars + `****`. This is used:
-- In log messages when confirming key is present
-- Never in HTTP responses (responses return `api_key_configured: bool` only)
+`security.redact_key(key)` returns the first 4 chars plus `****`. Used only in
+log messages when confirming a key was received. Never in HTTP responses;
+responses return `api_key_configured: bool` only.
 
 ## Test Connection Behavior
 
 `POST /api/v1/settings/test`:
-1. Retrieves stored API key from `SettingsStore`.
-2. Calls `LLMProvider.test_connection()` — sends a minimal API request (e.g., list models or a 1-token completion).
-3. Returns `{ "success": true, "latency_ms": 123, "model": "claude-3-5-sonnet-20241022" }` or `{ "success": false, "error": "..." }`.
-4. API key is NOT included in the response under any circumstances.
+
+1. Retrieves the stored API key from the active `SettingsStore`.
+2. Calls `LLMProvider.test_connection()` (sends a minimal LLM request).
+3. Returns `{ "success": true, "latency_ms": 123, "model": "..." }` or
+   `{ "success": false, "error": "..." }`.
+4. The API key is never included in the response.
 
 ## Clear Credentials
 
 `DELETE /api/v1/settings/credentials`:
+
 - Calls `SettingsStore.clear_api_key()`.
-- Does not clear provider/model settings (user may want to re-enter key without reconfiguring provider).
+- Does not clear provider/model settings — the user may want to re-enter a key
+  without re-selecting the provider.
 - Returns `{ "cleared": true }`.

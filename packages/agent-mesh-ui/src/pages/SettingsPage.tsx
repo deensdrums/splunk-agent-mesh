@@ -110,6 +110,7 @@ const SettingsPage: React.FC = () => {
     const [model, setModel] = useState(DEFAULT_MODELS.anthropic);
     const [apiKey, setApiKey] = useState('');
     const [keyConfigured, setKeyConfigured] = useState(false);
+    const [storageBackend, setStorageBackend] = useState<string | undefined>();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
@@ -124,12 +125,15 @@ const SettingsPage: React.FC = () => {
                 setModel(s.model || DEFAULT_MODELS[s.provider]);
                 setBaseUrl(s.base_url || '');
                 setKeyConfigured(s.api_key_configured);
+                setStorageBackend(s.storage_backend);
                 setLoading(false);
             })
             .catch(() => {
                 setLoading(false);
             });
     }, []);
+
+    const usingSplunkStore = storageBackend === 'SplunkSecureSettingsStore';
 
     const handleProviderChange = (_e: unknown, { value }: { value: string | number | boolean }) => {
         const p = String(value) as LLMProvider;
@@ -242,9 +246,20 @@ const SettingsPage: React.FC = () => {
             </FieldGroup>
 
             <SecurityNote>
-                API keys are stored in Splunk secure credential storage, not in browser storage or any config file. The
-                key is never returned to the frontend after saving — only a configured/not-configured status is shown.
-                Do not share or commit API keys.
+                {usingSplunkStore ? (
+                    <>
+                        <strong>Active storage:</strong> Splunk Passwords API (encrypted at rest).
+                        Keys are stored in the <code>agent_mesh</code> realm of the
+                        <code> splunk-agent-mesh</code> app and never returned to the browser.
+                    </>
+                ) : (
+                    <>
+                        <strong>Active storage:</strong> Dev mode (local file). The Splunk
+                        Passwords API is used when <code>SPLUNK_TOKEN</code> is set on the
+                        backend; otherwise plaintext key persistence is refused unless
+                        <code> AGENT_MESH_DEV_MODE=1</code>.
+                    </>
+                )}
             </SecurityNote>
 
             <ButtonRow>
@@ -284,17 +299,21 @@ const SettingsPage: React.FC = () => {
             <SectionTitle>About Credential Storage</SectionTitle>
             <CredentialStorageInfo>
                 <p>
-                    In production, API keys are stored using Splunk&apos;s encrypted passwords API (
-                    <code>/services/storage/passwords</code>). Keys are encrypted at rest using Splunk&apos;s built-in
-                    key management.
+                    The backend automatically uses Splunk&apos;s encrypted Passwords REST API
+                    (<code>/servicesNS/nobody/splunk-agent-mesh/storage/passwords</code>) when
+                    a <code>SPLUNK_TOKEN</code> environment variable is set on the backend. The
+                    key is stored under realm <code>agent_mesh</code>, name <code>llm_api_key</code>,
+                    encrypted at rest by Splunk.
                 </p>
                 <p>
-                    In local development mode, keys are read from the <code>AGENT_MESH_API_KEY</code> environment
-                    variable. Plaintext key storage is refused unless <code>AGENT_MESH_DEV_MODE=1</code> is also set.
+                    When no <code>SPLUNK_TOKEN</code> is set, the backend falls back to a local
+                    dev store that reads from the <code>AGENT_MESH_API_KEY</code> environment
+                    variable. Plaintext disk persistence is refused unless
+                    <code> AGENT_MESH_DEV_MODE=1</code> is explicitly set.
                 </p>
                 <p>
-                    The API key is never logged, never included in HTTP responses, and never stored in browser
-                    localStorage or sessionStorage.
+                    The API key is never logged, never included in HTTP responses, and never
+                    stored in browser localStorage or sessionStorage.
                 </p>
             </CredentialStorageInfo>
         </Card>
