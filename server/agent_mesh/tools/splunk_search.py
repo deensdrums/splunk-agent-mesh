@@ -9,14 +9,22 @@ from typing import Callable
 from ..investigation_models import now_iso
 from ..splunk_client import SearchResult, SplunkClient
 
-_SPL_BLOCK_RE = re.compile(r"```spl\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+_SPL_BLOCK_RE = re.compile(r"```(?:spl|splunk|)\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*$", re.MULTILINE)
+
+_SPL_INDICATORS = re.compile(
+    r"\b(index\s*=|stats\s|table\s|where\s|eval\s|search\s|sourcetype\s*=|timechart\s)", re.IGNORECASE
+)
 
 
 def extract_spl_blocks(markdown: str) -> list[dict]:
     blocks: list[dict] = []
     for idx, match in enumerate(_SPL_BLOCK_RE.finditer(markdown), start=1):
         spl = match.group(1).strip()
+        if not spl:
+            continue
+        if not _SPL_INDICATORS.search(spl):
+            continue
         prefix = markdown[: match.start()]
         headings = _HEADING_RE.findall(prefix)
         title = headings[-1] if headings else f"SPL search {idx}"

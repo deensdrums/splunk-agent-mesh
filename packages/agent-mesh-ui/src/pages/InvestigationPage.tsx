@@ -146,11 +146,21 @@ const InvestigationPage: React.FC = () => {
                         });
                     },
                     onComplete: (status, completedAt) => {
-                        setResult((prev) =>
-                            prev ? { ...prev, status: status as InvestigationResult['status'], completed_at: completedAt } : prev
-                        );
                         streamRef.current = null;
-                        resolve();
+                        apiClient
+                            .getInvestigation(id)
+                            .then((full) => {
+                                setResult(full);
+                                resolve();
+                            })
+                            .catch(() => {
+                                setResult((prev) =>
+                                    prev
+                                        ? { ...prev, status: status as InvestigationResult['status'], completed_at: completedAt }
+                                        : prev
+                                );
+                                resolve();
+                            });
                     },
                     onError: (message) => {
                         streamRef.current = null;
