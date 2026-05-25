@@ -1,5 +1,6 @@
 import {
     AgentDescriptor,
+    AgentOutput,
     InvestigationRequest,
     InvestigationResult,
     InvestigationStartResponse,
@@ -11,9 +12,22 @@ import {
 const BASE_URL =
     (typeof window !== 'undefined' && (window as any).__AGENT_MESH_API_URL__) ||
     'http://localhost:8765';
-const API_ROOT = `${BASE_URL}/api/v1`;
+export const API_ROOT = `${BASE_URL}/api/v1`;
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+function getSplunkUser(): string | undefined {
+    try {
+        // eslint-disable-next-line global-require, @typescript-eslint/no-var-requires
+        const cfg = require('@splunk/splunk-utils/config');
+        if (cfg.isAvailable && cfg.username) {
+            return cfg.username as string;
+        }
+    } catch {
+        // Not running in Splunk Web — fall through.
+    }
+    return undefined;
+}
 
 export class ApiTimeoutError extends Error {
     constructor(ms: number) {
@@ -25,11 +39,19 @@ export class ApiTimeoutError extends Error {
 async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const splunkUser = getSplunkUser();
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...init?.headers as Record<string, string>,
+    };
+    if (splunkUser) {
+        headers['x-splunk-user'] = splunkUser;
+    }
     try {
         const res = await fetch(`${API_ROOT}${path}`, {
-            headers: { 'Content-Type': 'application/json', ...init?.headers },
-            signal: controller.signal,
             ...init,
+            headers,
+            signal: controller.signal,
         });
         if (!res.ok) {
             const text = await res.text().catch(() => res.statusText);
@@ -92,3 +114,52 @@ export const apiClient = {
         return request('/health', undefined, 5_000);
     },
 };
+
+export interface InvestigationStreamCallbacks {
+    onAgentOrder: (order: string[]) => void;
+    onAgentComplete: (agentId: string, output: AgentOutput) => void;
+    onComplete: (status: string, completedAt?: string) => void;
+    onError: (message: string) => void;
+}
+
+export function createInvestigationStream(
+    id: string,
+    callbacks: InvestigationStreamCallbacks,
+): { close: () => void } {
+    const url = `${API_ROOT}/investigations/${encodeURIComponent(id)}/stream`;
+    const es = new EventSource(url);
+
+    es.onmessage = (event: MessageEvent) => {
+        let data: any;
+        try {
+            data = JSON.parse(event.data);
+        } catch {
+            return;
+        }
+        switch (data.type) {
+            case 'agent_order':
+                callbacks.onAgentOrder(data.agent_order);
+                break;
+            case 'agent_complete':
+                callbacks.onAgentComplete(data.agent_id, data.output);
+                break;
+            case 'investigation_complete':
+                callbacks.onComplete(data.status, data.completed_at);
+                es.close();
+                break;
+            case 'error':
+                callbacks.onError(data.message);
+                es.close();
+                break;
+            default:
+                break;
+        }
+    };
+
+    es.onerror = () => {
+        es.close();
+        callbacks.onError('stream_failed');
+    };
+
+    return { close: () => es.close() };
+}
