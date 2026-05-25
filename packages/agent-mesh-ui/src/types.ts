@@ -3,7 +3,7 @@ export type LLMProvider = 'anthropic' | 'openrouter' | 'openai_compatible';
 // ===== New agent-mesh shape =====
 
 export type AgentRunStatus = 'pending' | 'running' | 'completed' | 'error' | 'cancelled';
-export type VisualizationKind = 'table' | 'timechart' | 'bar' | 'single';
+export type VisualizationKind = 'table' | 'timechart' | 'bar' | 'single' | 'line' | 'pie';
 
 export interface AgentDescriptor {
     id: string;
