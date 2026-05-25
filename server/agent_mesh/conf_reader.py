@@ -166,6 +166,7 @@ class SplunkRestConfReader(ConfReader):
             cfg = _build_agent_config(stanza, merged)
             if cfg and cfg.enabled:
                 agents.append(cfg)
+                logger.info("Loaded agent %s (skills=%r).", cfg.id, cfg.skills)
         agents.sort(key=lambda a: (a.order, a.id))
         return agents
 

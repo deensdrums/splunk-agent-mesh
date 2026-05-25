@@ -173,10 +173,18 @@ class Orchestrator:
         return "\n\n".join(chunks)
 
     def _run_agent_tools(self, cfg, request: dict, output: dict) -> list[dict]:
-        if "splunk_search" not in cfg.skills or output.get("status") == "error":
+        if "splunk_search" not in cfg.skills:
+            logger.debug("Agent %s: skipping tools (skills=%r).", cfg.id, cfg.skills)
+            return []
+        if output.get("status") == "error":
+            logger.debug("Agent %s: skipping tools (agent returned error).", cfg.id)
             return []
         earliest = request.get("time_range") or "-24h"
         blocks = extract_spl_blocks(output.get("markdown", ""))
+        if not blocks:
+            logger.warning("Agent %s has splunk_search skill but no ```spl blocks found in output.", cfg.id)
+            return []
+        logger.info("Agent %s: executing %d SPL search(es).", cfg.id, len(blocks[:4]))
         artifacts = []
         for block in blocks[:4]:
             artifacts.append(

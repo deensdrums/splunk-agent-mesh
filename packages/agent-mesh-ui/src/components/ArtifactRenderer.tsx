@@ -156,8 +156,6 @@ function renderViz(artifact: SearchArtifact, fields: string[], rows: Record<stri
     }
     if (artifact.visualization.kind === 'timechart') {
         const columnData = toColumnMajor(fields, rows);
-        // TODO; deleteme
-        console.log("We're using a timechart!");
         return (
             <div style={{ width: '100%', overflowX: 'auto' }}>
                 <Column
