@@ -1,9 +1,12 @@
 """Splunk Agent Mesh FastAPI backend."""
 
+import asyncio
+import json
 import logging
 import re
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
@@ -232,6 +235,25 @@ def cancel_investigation(investigation_id: str, http_request: Request):
     return {"id": investigation_id, "status": job["status"], "completed_at": job.get("completed_at")}
 
 
+@app.get("/api/v1/investigations/{investigation_id}/stream")
+async def stream_investigation(investigation_id: str):
+    """SSE stream of investigation progress.
+
+    Emits events as each agent completes. The investigation ID is the
+    access credential — EventSource cannot send custom headers, so
+    header-based auth is not possible here. Production path: signed
+    stream token returned by POST /investigations/start.
+    """
+    return StreamingResponse(
+        _stream_events(investigation_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @app.get("/api/v1/investigations/{investigation_id}")
 def get_investigation(investigation_id: str, http_request: Request):
     context = context_from_request(http_request)
@@ -239,6 +261,51 @@ def get_investigation(investigation_id: str, http_request: Request):
     if job is None:
         raise HTTPException(status_code=404, detail="Investigation not found.")
     return job
+
+
+async def _stream_events(investigation_id: str):
+    seen_agents: set[str] = set()
+    order_sent = False
+    polls_with_no_job = 0
+
+    while True:
+        job = JOB_STORE.get(investigation_id)
+
+        if job is None:
+            polls_with_no_job += 1
+            if polls_with_no_job >= 10:
+                yield _sse_event({"type": "error", "message": "Investigation not found"})
+                return
+            await asyncio.sleep(0.3)
+            continue
+
+        if not order_sent and job.get("agent_order"):
+            order_sent = True
+            yield _sse_event({"type": "agent_order", "agent_order": job["agent_order"]})
+
+        for agent_id, output in job.get("agents", {}).items():
+            if agent_id not in seen_agents:
+                seen_agents.add(agent_id)
+                yield _sse_event({
+                    "type": "agent_complete",
+                    "agent_id": agent_id,
+                    "output": output,
+                })
+
+        if job["status"] not in ("running", "pending"):
+            yield _sse_event({
+                "type": "investigation_complete",
+                "status": job["status"],
+                "completed_at": job.get("completed_at"),
+            })
+            return
+
+        yield ": keepalive\n\n"
+        await asyncio.sleep(0.3)
+
+
+def _sse_event(data: dict) -> str:
+    return f"data: {json.dumps(data, default=str)}\n\n"
 
 
 # ---- Helpers ----

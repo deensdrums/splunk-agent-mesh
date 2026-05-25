@@ -55,6 +55,27 @@ const AgentPill = styled.div`
     padding: 4px 8px;
 `;
 
+const PendingCard = styled(Card)`
+    color: ${variables.contentColorMuted};
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    gap: ${variables.spacingSmall};
+`;
+
+const SectionHeader = styled.div`
+    display: flex;
+    align-items: center;
+    gap: ${variables.spacingSmall};
+    margin-bottom: ${variables.spacingSmall};
+`;
+
+const SectionTitle = styled.span`
+    font-weight: ${variables.fontWeightSemiBold};
+    font-size: ${variables.fontSizeLarge};
+    color: ${variables.contentColorActive};
+`;
+
 function fallbackSections(result: InvestigationResult) {
     return result.agent_order.map((agentId) => {
         const output = result.agents[agentId];
@@ -95,6 +116,10 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) 
         artifactsByAgent.set(artifact.agent_id, current.concat(artifact));
     });
 
+    const agentIds = result.agent_order.length > 0
+        ? result.agent_order
+        : Object.keys(result.agents);
+
     return (
         <Container>
             <ReportHeader>
@@ -114,14 +139,45 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) 
                 </Message>
             )}
 
-            {(result.sections || fallbackSections(result)).map((section) => (
-                <Card key={section.id}>
-                    <MarkdownView content={section.markdown} />
-                    {(artifactsByAgent.get(section.agent_id || '') || []).map((artifact) => (
-                        <ArtifactRenderer key={artifact.id} artifact={artifact} />
-                    ))}
-                </Card>
-            ))}
+            {agentIds.map((agentId) => {
+                const output = result.agents[agentId];
+                const descriptor = descriptors.find((d) => d.id === agentId);
+                const displayName = output?.display_name || descriptor?.display_name || agentId;
+
+                if (!output) {
+                    return (
+                        <PendingCard key={`section-${agentId}`}>
+                            <WaitSpinner size="small" />
+                            {displayName} — waiting for results…
+                        </PendingCard>
+                    );
+                }
+
+                if (output.status === 'error') {
+                    return (
+                        <Card key={`section-${agentId}`}>
+                            <SectionHeader>
+                                <SectionTitle>{displayName}</SectionTitle>
+                                <AgentStatusBadge status="error" />
+                            </SectionHeader>
+                            <Message type="error">{output.error || output.markdown}</Message>
+                        </Card>
+                    );
+                }
+
+                return (
+                    <Card key={`section-${agentId}`}>
+                        <SectionHeader>
+                            <SectionTitle>{displayName}</SectionTitle>
+                            <AgentStatusBadge status={output.status} />
+                        </SectionHeader>
+                        <MarkdownView content={output.markdown} />
+                        {(artifactsByAgent.get(agentId) || []).map((artifact) => (
+                            <ArtifactRenderer key={artifact.id} artifact={artifact} />
+                        ))}
+                    </Card>
+                );
+            })}
 
             <Card>
                 <Title>Agent Work Details</Title>

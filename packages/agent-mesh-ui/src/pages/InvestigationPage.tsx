@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
 import Button from '@splunk/react-ui/Button';
@@ -7,7 +7,7 @@ import Text from '@splunk/react-ui/Text';
 import Message from '@splunk/react-ui/Message';
 import { AgentDescriptor, InvestigationRequest, InvestigationResult } from '../types';
 import InvestigationReport from '../components/InvestigationReport';
-import { apiClient } from '../services/apiClient';
+import { apiClient, createInvestigationStream } from '../services/apiClient';
 import { DEMO_RESULT } from '../demo/demoData';
 
 const FormCard = styled.div`
@@ -71,15 +71,16 @@ const InvestigationPage: React.FC = () => {
     const [result, setResult] = useState<InvestigationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [descriptors, setDescriptors] = useState<AgentDescriptor[]>([]);
+    const streamRef = useRef<{ close: () => void } | null>(null);
 
     useEffect(() => {
         apiClient
             .getAgents()
             .then((res) => setDescriptors(res.agents))
-            .catch(() => {
-                // Backend not reachable yet — leave descriptors empty.
-                // The tab panel surfaces a helpful empty state.
-            });
+            .catch(() => {});
+        return () => {
+            streamRef.current?.close();
+        };
     }, []);
 
     const loadDemoForm = () => {
@@ -107,10 +108,70 @@ const InvestigationPage: React.FC = () => {
         throw new Error('Investigation timed out while waiting for results.');
     };
 
+    const streamInvestigation = useCallback(
+        (id: string): Promise<void> =>
+            new Promise((resolve, reject) => {
+                const stream = createInvestigationStream(id, {
+                    onAgentOrder: (order) => {
+                        setResult((prev) => (prev ? { ...prev, agent_order: order } : prev));
+                        if (descriptors.length === 0 && order.length > 0) {
+                            setDescriptors(
+                                order.map((agentId) => ({
+                                    id: agentId,
+                                    display_name: agentId,
+                                    description: '',
+                                    order: 0,
+                                    enabled: true,
+                                }))
+                            );
+                        }
+                    },
+                    onAgentComplete: (agentId, output) => {
+                        setResult((prev) => {
+                            if (!prev) return prev;
+                            const updated = {
+                                ...prev,
+                                agents: { ...prev.agents, [agentId]: output },
+                            };
+                            return updated;
+                        });
+                        setDescriptors((prev) => {
+                            const existing = prev.find((d) => d.id === agentId);
+                            if (existing && existing.display_name === agentId && output.display_name) {
+                                return prev.map((d) =>
+                                    d.id === agentId ? { ...d, display_name: output.display_name } : d
+                                );
+                            }
+                            return prev;
+                        });
+                    },
+                    onComplete: (status, completedAt) => {
+                        setResult((prev) =>
+                            prev ? { ...prev, status: status as InvestigationResult['status'], completed_at: completedAt } : prev
+                        );
+                        streamRef.current = null;
+                        resolve();
+                    },
+                    onError: (message) => {
+                        streamRef.current = null;
+                        if (message === 'stream_failed') {
+                            reject(new Error(message));
+                        } else {
+                            setError(message);
+                            resolve();
+                        }
+                    },
+                });
+                streamRef.current = stream;
+            }),
+        [descriptors.length]
+    );
+
     const runInvestigation = async (isDemo: boolean, override?: InvestigationRequest) => {
         setRunning(true);
         setError(null);
         setResult(null);
+        streamRef.current?.close();
 
         try {
             const req: InvestigationRequest =
@@ -122,29 +183,31 @@ const InvestigationPage: React.FC = () => {
                     time_range: timeRange || undefined,
                     demo: isDemo,
                 };
-            const start = await apiClient.startInvestigation(req).catch(async (startErr) => {
-                if (isDemo) {
-                    return null;
-                }
+            const start = await apiClient.startInvestigation(req).catch((startErr) => {
+                if (isDemo) return null;
                 throw startErr;
             });
-            const investigationResult = start
-                ? await pollInvestigation(start.id)
-                : await apiClient
-                      .runInvestigation(req)
-                      .catch(() => DEMO_RESULT); // graceful fallback if backend not reachable in demo
-            setResult(investigationResult);
-            // Make sure descriptor list reflects whatever the run used.
-            if (descriptors.length === 0 && investigationResult.agent_order.length > 0) {
-                setDescriptors(
-                    investigationResult.agent_order.map((id) => ({
-                        id,
-                        display_name: investigationResult.agents[id]?.display_name || id,
-                        description: '',
-                        order: 0,
-                        enabled: true,
-                    }))
-                );
+
+            if (start) {
+                setResult({
+                    id: start.id,
+                    status: 'running',
+                    owner: start.owner,
+                    started_at: start.started_at,
+                    agent_order: [],
+                    agents: {},
+                });
+
+                try {
+                    await streamInvestigation(start.id);
+                } catch {
+                    await pollInvestigation(start.id);
+                }
+            } else {
+                const investigationResult = await apiClient
+                    .runInvestigation(req)
+                    .catch(() => DEMO_RESULT);
+                setResult(investigationResult);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Investigation failed. Check backend connection.');

@@ -127,6 +127,36 @@ export interface SaveSettingsRequest {
     api_key?: string;
 }
 
+// ===== SSE event types =====
+
+export interface SSEAgentOrderEvent {
+    type: 'agent_order';
+    agent_order: string[];
+}
+
+export interface SSEAgentCompleteEvent {
+    type: 'agent_complete';
+    agent_id: string;
+    output: AgentOutput;
+}
+
+export interface SSEInvestigationCompleteEvent {
+    type: 'investigation_complete';
+    status: string;
+    completed_at?: string;
+}
+
+export interface SSEErrorEvent {
+    type: 'error';
+    message: string;
+}
+
+export type InvestigationSSEEvent =
+    | SSEAgentOrderEvent
+    | SSEAgentCompleteEvent
+    | SSEInvestigationCompleteEvent
+    | SSEErrorEvent;
+
 // ===== Legacy types — kept for archived components that will return as
 // rich renderers when structured-output skills land. =====
 
