@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { variables } from '@splunk/themes';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
+import Column from '@splunk/visualizations/Column';
 import { Artifact, SearchArtifact } from '../types';
 
 interface Props {
@@ -133,6 +134,18 @@ function firstNumericField(fields: string[], rows: Record<string, unknown>[]): s
     return fields.find((field) => field !== '_time' && rows.some((row) => !Number.isNaN(toNumber(row[field]))));
 }
 
+function toColumnMajor(
+    fields: string[],
+    rows: Record<string, unknown>[]
+): { fields: { name: string }[]; columns: string[][] } {
+    return {
+        fields: fields.map((name) => ({ name })),
+        columns: fields.map((fieldName) =>
+            rows.map((row) => String(row[fieldName] ?? ''))
+        ),
+    };
+}
+
 function renderViz(artifact: SearchArtifact, fields: string[], rows: Record<string, unknown>[]) {
     if (rows.length === 0) {
         return <Message type="info">No rows returned.</Message>;
@@ -141,7 +154,27 @@ function renderViz(artifact: SearchArtifact, fields: string[], rows: Record<stri
         const metric = firstNumericField(fields, rows);
         return <SingleValue>{metric ? String(rows[0][metric]) : String(Object.values(rows[0])[0])}</SingleValue>;
     }
-    if (artifact.visualization.kind === 'bar' || artifact.visualization.kind === 'timechart') {
+    if (artifact.visualization.kind === 'timechart') {
+        const columnData = toColumnMajor(fields, rows);
+        // TODO; deleteme
+        console.log("We're using a timechart!");
+        return (
+            <div style={{ width: '100%', overflowX: 'auto' }}>
+                <Column
+                    width={700}
+                    height={250}
+                    dataSources={{
+                        primary: {
+                            data: columnData,
+                            meta: {},
+                            requestParams: {},
+                        },
+                    }}
+                />
+            </div>
+        );
+    }
+    if (artifact.visualization.kind === 'bar') {
         const metric = firstNumericField(fields, rows);
         if (metric) {
             const values = rows.map((row) => {
