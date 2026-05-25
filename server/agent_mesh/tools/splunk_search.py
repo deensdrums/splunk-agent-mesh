@@ -9,18 +9,31 @@ from typing import Callable
 from ..investigation_models import now_iso
 from ..splunk_client import SearchResult, SplunkClient
 
-_SPL_BLOCK_RE = re.compile(r"```(?:spl|splunk|)\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
+_SPL_BLOCK_RE = re.compile(
+    r"```(?:spl|splunk)(?:_([a-z]+))?\s*\n(.*?)```", re.IGNORECASE | re.DOTALL
+)
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*$", re.MULTILINE)
 
 _SPL_INDICATORS = re.compile(
     r"\b(index\s*=|stats\s|table\s|where\s|eval\s|search\s|sourcetype\s*=|timechart\s)", re.IGNORECASE
 )
 
+_VIZ_HINT_MAP: dict[str, str] = {
+    "column": "timechart",
+    "timechart": "timechart",
+    "line": "line",
+    "pie": "pie",
+    "bar": "bar",
+    "table": "table",
+    "single": "single",
+}
+
 
 def extract_spl_blocks(markdown: str) -> list[dict]:
     blocks: list[dict] = []
     for idx, match in enumerate(_SPL_BLOCK_RE.finditer(markdown), start=1):
-        spl = match.group(1).strip()
+        viz_suffix = match.group(1)
+        spl = match.group(2).strip()
         if not spl:
             continue
         if not _SPL_INDICATORS.search(spl):
@@ -28,12 +41,19 @@ def extract_spl_blocks(markdown: str) -> list[dict]:
         prefix = markdown[: match.start()]
         headings = _HEADING_RE.findall(prefix)
         title = headings[-1] if headings else f"SPL search {idx}"
-        blocks.append({"title": title, "spl": spl})
+        viz_hint = _VIZ_HINT_MAP.get(viz_suffix.lower()) if viz_suffix else None
+        blocks.append({"title": title, "spl": spl, "viz_hint": viz_hint})
     return blocks
 
 
-def infer_visualization(spl: str, fields: list[str], rows: list[dict], preferred_view: str | None = None) -> dict:
-    allowed = {"table", "timechart", "bar", "single"}
+def infer_visualization(
+    spl: str, fields: list[str], rows: list[dict], preferred_view: str | None = None, viz_hint: str | None = None
+) -> dict:
+    allowed = {"table", "timechart", "bar", "single", "line", "pie"}
+
+    if viz_hint and viz_hint in allowed:
+        return {"kind": viz_hint, "reason": "Agent-specified visualization hint."}
+
     lower_spl = spl.lower()
     if preferred_view in allowed:
         preferred = preferred_view
@@ -61,6 +81,7 @@ def run_splunk_search_artifact(
     latest: str,
     client_factory: Callable[[], SplunkClient | None],
     preferred_view: str | None = None,
+    viz_hint: str | None = None,
 ) -> dict:
     artifact_id = f"artifact-{uuid.uuid4().hex[:12]}"
     started_at = now_iso()
@@ -76,9 +97,10 @@ def run_splunk_search_artifact(
             SearchResult(spl=spl, status="error", error="No Splunk token available for this investigation."),
             started_at,
             preferred_view,
+            viz_hint,
         )
     result = client.run_search(spl, earliest=earliest, latest=latest)
-    return _artifact(artifact_id, agent_id, title, spl, earliest, latest, result, started_at, preferred_view)
+    return _artifact(artifact_id, agent_id, title, spl, earliest, latest, result, started_at, preferred_view, viz_hint)
 
 
 def _artifact(
@@ -91,6 +113,7 @@ def _artifact(
     result: SearchResult,
     started_at: str,
     preferred_view: str | None,
+    viz_hint: str | None = None,
 ) -> dict:
     rows = result.events
     fields = result.fields
@@ -110,7 +133,7 @@ def _artifact(
         "error": result.error,
         "started_at": started_at,
         "completed_at": now_iso() if result.status in ("done", "error") else None,
-        "visualization": infer_visualization(spl, fields, rows, preferred_view),
+        "visualization": infer_visualization(spl, fields, rows, preferred_view, viz_hint),
     }
 
 

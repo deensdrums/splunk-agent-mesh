@@ -195,6 +195,7 @@ class Orchestrator:
                     earliest=earliest,
                     latest="now",
                     client_factory=self.splunk_client_factory,
+                    viz_hint=block.get("viz_hint"),
                 )
             )
         return artifacts

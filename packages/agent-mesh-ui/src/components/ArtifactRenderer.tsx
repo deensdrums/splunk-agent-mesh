@@ -4,6 +4,8 @@ import { variables } from '@splunk/themes';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import Column from '@splunk/visualizations/Column';
+import Line from '@splunk/visualizations/Line';
+import Pie from '@splunk/visualizations/Pie';
 import { Artifact, SearchArtifact } from '../types';
 
 interface Props {
@@ -161,6 +163,42 @@ function renderViz(artifact: SearchArtifact, fields: string[], rows: Record<stri
                 <Column
                     width={700}
                     height={250}
+                    dataSources={{
+                        primary: {
+                            data: columnData,
+                            meta: {},
+                            requestParams: {},
+                        },
+                    }}
+                />
+            </div>
+        );
+    }
+    if (artifact.visualization.kind === 'line') {
+        const columnData = toColumnMajor(fields, rows);
+        return (
+            <div style={{ width: '100%', overflowX: 'auto' }}>
+                <Line
+                    width={700}
+                    height={250}
+                    dataSources={{
+                        primary: {
+                            data: columnData,
+                            meta: {},
+                            requestParams: {},
+                        },
+                    }}
+                />
+            </div>
+        );
+    }
+    if (artifact.visualization.kind === 'pie') {
+        const columnData = toColumnMajor(fields, rows);
+        return (
+            <div style={{ width: '100%', overflowX: 'auto' }}>
+                <Pie
+                    width={400}
+                    height={300}
                     dataSources={{
                         primary: {
                             data: columnData,
