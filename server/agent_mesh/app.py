@@ -286,10 +286,12 @@ async def _stream_events(investigation_id: str):
         for agent_id, output in job.get("agents", {}).items():
             if agent_id not in seen_agents:
                 seen_agents.add(agent_id)
+                agent_artifacts = [a for a in job.get("artifacts", []) if a.get("agent_id") == agent_id]
                 yield _sse_event({
                     "type": "agent_complete",
                     "agent_id": agent_id,
                     "output": output,
+                    "artifacts": agent_artifacts,
                 })
 
         if job["status"] not in ("running", "pending"):

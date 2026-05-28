@@ -126,12 +126,13 @@ const InvestigationPage: React.FC = () => {
                             );
                         }
                     },
-                    onAgentComplete: (agentId, output) => {
+                    onAgentComplete: (agentId, output, artifacts) => {
                         setResult((prev) => {
                             if (!prev) return prev;
                             const updated = {
                                 ...prev,
                                 agents: { ...prev.agents, [agentId]: output },
+                                artifacts: [...(prev.artifacts || []), ...artifacts],
                             };
                             return updated;
                         });
