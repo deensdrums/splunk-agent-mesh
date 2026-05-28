@@ -34,23 +34,26 @@ The first example mesh is a SOC investigation mesh: triage, SPL hunter, timeline
 - LLM provider abstraction: Anthropic, OpenRouter, OpenAI-compatible.
 - Deterministic demo mode that mirrors the configured mesh with canned markdown.
 
-## Non-Goals (MVP)
-- Cross-agent context. Agents are independent in v1 — each sees only the original request, not other agents' outputs.
-- Skills/tool use. The stanza format reserves a `skills =` field, but it's parsed and ignored in v1.
-- Streaming. Agents run sequentially server-side and the response arrives as one payload. All tabs update at once.
+## Non-Goals (current scope)
 - Automated response execution. All actions are recommendations requiring human approval.
 - Multi-tenant or per-user mesh customization.
+- Parallel agent execution (architecturally possible via DAG depth, not yet implemented).
+
+## Implemented Features
+- **Skills**: `splunk_search` skill — agents emit fenced SPL blocks, orchestrator executes them, results render as interactive charts and tables.
+- **Cross-agent context**: `depends_on` field — orchestrator builds a DAG and passes upstream outputs to dependent agents.
+- **SSE streaming**: per-agent progressive rendering via Server-Sent Events.
+- **Visualization hints**: agents control chart type via fence tag suffixes (`spl_column`, `spl_table`, etc.).
+- **`@splunk/visualizations`**: Column, Line, Pie chart rendering from Splunk's official library.
 
 ## Future Direction
-The architecture leaves clean extension points for:
-- **Skills**: stanzas reference named tools (`splunk_search`, `web_search`, …). The runtime resolves and invokes them.
-- **Structured output**: agents emit JSON-in-markdown or mixed outputs; the `MarkdownView`'s code-block renderer registry routes them to rich components.
-- **Cross-agent context**: optional `depends_on = ` per stanza so dependent agents see prior outputs.
-- **Streaming**: SSE/WebSocket per-agent updates instead of one-shot response.
+- **Additional skills**: `web_search`, `mitre_lookup` (resolves technique IDs).
+- **Parallel execution**: agents at the same DAG depth could run concurrently.
 - **Multiple meshes**: app supports more than one mesh, selectable from the UI.
 
 ## Final Demo Experience
-A user opens Splunk Agent Mesh in Splunk Web, clicks "Load Suspicious PowerShell Demo," and within seconds sees:
-- The input card populated with the demo scenario.
-- Seven agent tabs below, each populating with rich markdown — severity classification, recommended SPL searches, an incident timeline table, blast-radius hunts, a detection rule, a numbered response plan, and an executive summary with MITRE techniques.
-- Each tab is keyed by the configured agent id; if an admin edits `agents.conf` to add an eighth agent, an eighth tab appears with no UI changes.
+A user opens Splunk Agent Mesh in Splunk Web, fills in an investigation description (or clicks "Load Suspicious PowerShell Demo"), and within seconds sees:
+- Agent sections populating progressively via SSE streaming.
+- Rich markdown in each section — severity classification, recommended SPL searches, an incident timeline table, blast-radius analysis, a detection rule, a numbered response plan, and an executive summary with MITRE techniques.
+- Interactive charts (Column, Line, Pie) and data tables rendered inline from live Splunk search results.
+- If an admin edits `agents.conf` to add an eighth agent, an eighth section appears in the report with no UI changes.

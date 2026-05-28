@@ -48,9 +48,14 @@ order = <integer>
 * the tab list. Ties broken alphabetically by id. Default: 100.
 
 skills = <comma-separated list>
-* Lists named skills the agent may invoke. The first supported skill is
-* splunk_search.
+* Lists named skills the agent may invoke. Currently supported:
+*   splunk_search — extracts fenced SPL blocks from the agent's markdown output,
+*     executes them against Splunk, and attaches results as structured artifacts.
+*     Agents should use visualization-hinted fence tags (spl_column, spl_table,
+*     spl_line, spl_bar, spl_pie, spl_single) to control chart rendering.
 
 depends_on = <comma-separated list>
 * Optional list of agent ids that must complete before this agent runs.
-* Dependent agents receive prior agent summaries and artifact metadata.
+* The orchestrator builds a DAG from these edges and executes in topological order.
+* Dependent agents receive prior agent markdown outputs and artifact metadata
+* as additional context in their request.

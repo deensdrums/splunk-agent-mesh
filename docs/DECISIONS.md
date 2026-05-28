@@ -152,3 +152,68 @@
 - Rich rendering (charts, embedded SPL run-buttons, entity links) is a clean future addition — wire a new renderer into the registry without changing the agent contract.
 - Sanitization is on by default. Agents cannot inject HTML/JS into the UI.
 - A future ADR may add `output_format = json | mixed` to support agents that emit structured data alongside markdown.
+
+---
+
+## ADR-009: Cross-Agent Dependencies via `depends_on`
+
+**Date**: 2026-05-24
+**Status**: Accepted (supersedes ADR-007 "independent in v1")
+
+**Context**: ADR-007 kept agents independent for safety and simplicity. In practice, downstream agents (timeline, blast_radius, executive_brief) produce better output when they can see upstream findings rather than re-deriving from scratch.
+
+**Chosen Approach**: Optional `depends_on = <agent_id, ...>` field in the stanza. The orchestrator builds a DAG via topological sort and injects prior agents' markdown + artifact metadata into the dependent agent's request as `dependency_context`. Agents without `depends_on` still see only the original request.
+
+**Consequences**:
+- Cycle detection logs an error and falls back to configured order.
+- A prompt change in an upstream agent can affect downstream quality — but this is an acceptable tradeoff given the correctness improvement.
+- Agents remain parallelizable within their DAG depth level (not yet implemented).
+
+---
+
+## ADR-010: SSE Streaming for Progressive Rendering
+
+**Date**: 2026-05-24
+**Status**: Accepted
+
+**Context**: With 7 sequential agents and LLM latency, a full investigation takes 30-60s. Waiting for a single response payload is poor UX.
+
+**Chosen Approach**: `POST /api/v1/investigations/start` launches the investigation asynchronously. `GET /api/v1/investigations/{id}/stream` provides an SSE endpoint that emits `agent_order`, `agent_complete`, and `complete` events. The frontend connects immediately after starting and renders each agent's section as it arrives.
+
+**Consequences**:
+- Users see results within seconds of the first agent completing.
+- If SSE fails (proxy issues, disconnection), the frontend falls back to polling via `/status`.
+- Investigation state is held in memory (`InvestigationJobStore`). Server restart loses in-flight investigations.
+
+---
+
+## ADR-011: Skills as Post-Processing, Not Tool Use
+
+**Date**: 2026-05-24
+**Status**: Accepted
+
+**Context**: The `splunk_search` skill could be implemented as LLM tool use (the model calls a function mid-generation) or as post-processing (the orchestrator extracts SPL from the completed markdown and executes it). Tool use requires provider-specific API features and complicates the generic `LLMAgent`.
+
+**Chosen Approach**: Skills are post-processing hooks. The agent generates markdown with fenced SPL blocks. After the agent completes, the orchestrator checks `cfg.skills`, extracts blocks via regex, and executes them. Results are attached as structured artifacts.
+
+**Consequences**:
+- The `LLMAgent` class stays completely generic — no tool-use wiring.
+- Any LLM provider works (no function-calling requirement).
+- Agents must be prompted to emit the right fence format — a prompt issue, not a code issue.
+- The approach scales to additional skills (e.g., `mitre_lookup`) by adding more post-processing hooks.
+
+---
+
+## ADR-012: Agent-Driven Visualization Hints
+
+**Date**: 2026-05-25
+**Status**: Accepted
+
+**Context**: The original `infer_visualization` heuristic guessed chart types from data shape (e.g., `_time` field → timechart). This produced incorrect visualizations for queries like `| table _time, user, action` (rendered as a chart instead of a table). The agent that wrote the SPL knows the visualization intent.
+
+**Chosen Approach**: Agents specify chart type via the code fence tag suffix: `spl_column`, `spl_line`, `spl_bar`, `spl_pie`, `spl_single`, `spl_table`. The harness regex captures the suffix and passes it as `viz_hint` to `infer_visualization`, which uses it as first priority. Bare `spl` fences fall back to the existing data-shape heuristic.
+
+**Consequences**:
+- Visualization correctness is deterministic when agents use the hinted format.
+- New agents must be prompted to use the convention — but the fallback means a naive agent still works.
+- Adding new viz types requires: a new suffix, a renderer branch in `ArtifactRenderer`, and a prompt update.
