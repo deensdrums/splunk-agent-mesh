@@ -1,6 +1,7 @@
 import {
     AgentDescriptor,
     AgentOutput,
+    Artifact,
     InvestigationRequest,
     InvestigationResult,
     InvestigationStartResponse,
@@ -117,7 +118,7 @@ export const apiClient = {
 
 export interface InvestigationStreamCallbacks {
     onAgentOrder: (order: string[]) => void;
-    onAgentComplete: (agentId: string, output: AgentOutput) => void;
+    onAgentComplete: (agentId: string, output: AgentOutput, artifacts: Artifact[]) => void;
     onComplete: (status: string, completedAt?: string) => void;
     onError: (message: string) => void;
 }
@@ -141,7 +142,7 @@ export function createInvestigationStream(
                 callbacks.onAgentOrder(data.agent_order);
                 break;
             case 'agent_complete':
-                callbacks.onAgentComplete(data.agent_id, data.output);
+                callbacks.onAgentComplete(data.agent_id, data.output, data.artifacts || []);
                 break;
             case 'investigation_complete':
                 callbacks.onComplete(data.status, data.completed_at);
