@@ -63,6 +63,11 @@ def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig |
     if not system_prompt:
         logger.warning("Agent stanza %r has no system_prompt; skipping.", stanza_id)
         return None
+    agent_mode = merged.get("agent_mode", "single_shot")
+    if agent_mode not in ("single_shot", "agentic"):
+        logger.warning("Agent %r has invalid agent_mode %r; defaulting to single_shot.", agent_id, agent_mode)
+        agent_mode = "single_shot"
+
     return AgentConfig(
         id=agent_id,
         display_name=merged.get("display_name", agent_id),
@@ -76,6 +81,8 @@ def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig |
         output_format=merged.get("output_format", "markdown"),
         skills=_coerce_list(merged.get("skills")),
         depends_on=_coerce_list(merged.get("depends_on")),
+        agent_mode=agent_mode,
+        max_iterations=_coerce_int(merged.get("max_iterations"), 10),
     )
 
 

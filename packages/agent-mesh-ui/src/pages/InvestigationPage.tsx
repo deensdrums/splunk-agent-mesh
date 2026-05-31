@@ -129,12 +129,13 @@ const InvestigationPage: React.FC = () => {
                     onAgentComplete: (agentId, output, artifacts) => {
                         setResult((prev) => {
                             if (!prev) return prev;
-                            const updated = {
+                            const existingIds = new Set((prev.artifacts || []).map((a) => a.id));
+                            const newArtifacts = artifacts.filter((a) => !existingIds.has(a.id));
+                            return {
                                 ...prev,
                                 agents: { ...prev.agents, [agentId]: output },
-                                artifacts: [...(prev.artifacts || []), ...artifacts],
+                                artifacts: [...(prev.artifacts || []), ...newArtifacts],
                             };
-                            return updated;
                         });
                         setDescriptors((prev) => {
                             const existing = prev.find((d) => d.id === agentId);
@@ -144,6 +145,18 @@ const InvestigationPage: React.FC = () => {
                                 );
                             }
                             return prev;
+                        });
+                    },
+                    onAgentUpdate: (agentId, output, artifacts) => {
+                        setResult((prev) => {
+                            if (!prev) return prev;
+                            const existingIds = new Set((prev.artifacts || []).map((a) => a.id));
+                            const newArtifacts = artifacts.filter((a) => !existingIds.has(a.id));
+                            return {
+                                ...prev,
+                                agents: { ...prev.agents, [agentId]: output },
+                                artifacts: [...(prev.artifacts || []), ...newArtifacts],
+                            };
                         });
                     },
                     onComplete: (status, completedAt) => {

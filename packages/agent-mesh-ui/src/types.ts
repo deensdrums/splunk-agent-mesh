@@ -2,7 +2,7 @@ export type LLMProvider = 'anthropic' | 'openrouter' | 'openai_compatible';
 
 // ===== New agent-mesh shape =====
 
-export type AgentRunStatus = 'pending' | 'running' | 'completed' | 'error' | 'cancelled';
+export type AgentRunStatus = 'pending' | 'running' | 'iterating' | 'completed' | 'error' | 'cancelled';
 export type VisualizationKind = 'table' | 'timechart' | 'bar' | 'single' | 'line' | 'pie';
 
 export interface AgentDescriptor {
@@ -140,6 +140,13 @@ export interface SSEAgentCompleteEvent {
     output: AgentOutput;
 }
 
+export interface SSEAgentUpdateEvent {
+    type: 'agent_update';
+    agent_id: string;
+    output: AgentOutput;
+    artifacts: Artifact[];
+}
+
 export interface SSEInvestigationCompleteEvent {
     type: 'investigation_complete';
     status: string;
@@ -154,6 +161,7 @@ export interface SSEErrorEvent {
 export type InvestigationSSEEvent =
     | SSEAgentOrderEvent
     | SSEAgentCompleteEvent
+    | SSEAgentUpdateEvent
     | SSEInvestigationCompleteEvent
     | SSEErrorEvent;
 

@@ -26,6 +26,19 @@ max_tokens = <integer>
 output_format = markdown
 * Reserved for future use. Only "markdown" is honored in v1.
 
+agent_mode = <string>
+* Execution mode for the agent. Values:
+*   single_shot — one LLM call, tools run post-hoc (default).
+*   agentic — iterative tool-use loop via the Anthropic tool-use API.
+*     The agent calls tools, observes results, and iterates until it
+*     stops calling tools or reaches max_iterations.
+* Default: single_shot.
+
+max_iterations = <integer>
+* Maximum number of tool-use iterations for agentic agents. Ignored for
+* single_shot agents. Acts as a safety cap to prevent runaway loops.
+* Default: 10.
+
 
 [agent:<id>]
 * One stanza per agent. The <id> portion is used as a stable identifier in the

@@ -17,6 +17,7 @@ from ..llm.base import LLMProvider
 from ..request_context import RequestContext
 from ..splunk_client import SplunkClient
 from ..tools.splunk_search import extract_spl_blocks, run_splunk_search_artifact
+from .agentic_llm_agent import AgenticLLMAgent
 from .llm_agent import LLMAgent
 
 logger = logging.getLogger(__name__)
@@ -73,13 +74,36 @@ class Orchestrator:
         ]
 
         for cfg in self._execution_order(agents):
-            agent = LLMAgent(cfg, self.llm)
             dependency_context = self._dependency_context(cfg.depends_on, outputs, artifacts)
             agent_request = {**request}
             if dependency_context:
                 agent_request["dependency_context"] = dependency_context
-            output = agent.run(agent_request)
-            agent_artifacts = self._run_agent_tools(cfg, request, output)
+
+            if cfg.agent_mode == "agentic" and self.llm:
+                agentic_agent = AgenticLLMAgent(cfg, self.llm, self.splunk_client_factory)
+
+                def _iteration_cb(
+                    intermediate_output: dict,
+                    new_artifacts: list[dict],
+                    _cfg_id: str = cfg.id,
+                ) -> None:
+                    if progress_callback:
+                        progress_callback({
+                            "agent_order": agent_order,
+                            "agents": {_cfg_id: intermediate_output},
+                            "artifacts": new_artifacts,
+                            "sections": [],
+                            "audit": [],
+                        })
+
+                output, agent_artifacts = agentic_agent.run(
+                    agent_request, progress_callback=_iteration_cb,
+                )
+            else:
+                agent = LLMAgent(cfg, self.llm)
+                output = agent.run(agent_request)
+                agent_artifacts = self._run_agent_tools(cfg, request, output)
+
             output["artifacts"] = [a["id"] for a in agent_artifacts]
             outputs[cfg.id] = output
             artifacts.extend(agent_artifacts)

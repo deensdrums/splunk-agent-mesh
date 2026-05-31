@@ -10,6 +10,7 @@ interface Props {
 const STATUS_LABEL: Record<AgentRunStatus, string> = {
     pending: 'pending',
     running: 'running',
+    iterating: 'investigating',
     completed: 'done',
     error: 'error',
     cancelled: 'cancelled',
@@ -21,6 +22,10 @@ const variantStyles = {
         color: ${variables.contentColorMuted};
     `,
     running: css`
+        background: ${variables.statusColorInfo};
+        color: ${variables.contentColorActive};
+    `,
+    iterating: css`
         background: ${variables.statusColorInfo};
         color: ${variables.contentColorActive};
     `,
