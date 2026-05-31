@@ -38,7 +38,7 @@ const PendingState = styled.div`
 `;
 
 function effectiveStatus(running: boolean, output: AgentOutput | undefined): AgentRunStatus {
-    if (output) return output.status;
+    if (output) {return output.status;}
     return running ? 'running' : 'pending';
 }
 
@@ -68,7 +68,7 @@ const AgentTabsPanel: React.FC<Props> = ({ descriptors, result, running }) => {
             <TabLayout
                 activePanelId={active}
                 onChange={(_e: unknown, data: { activePanelId?: string }) => {
-                    if (data.activePanelId) setActive(data.activePanelId);
+                    if (data.activePanelId) {setActive(data.activePanelId);}
                 }}
             >
                 {descriptors.map((d) => {

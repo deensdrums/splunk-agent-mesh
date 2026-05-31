@@ -47,9 +47,9 @@ const Dot = styled.div<{ severity: Severity }>`
     height: 12px;
     border-radius: 50%;
     background: ${({ severity }) => {
-        if (severity === 'critical') return '#b22222';
-        if (severity === 'high') return '#e84c4c';
-        if (severity === 'medium') return '#e8a14c';
+        if (severity === 'critical') {return '#b22222';}
+        if (severity === 'high') {return '#e84c4c';}
+        if (severity === 'medium') {return '#e8a14c';}
         return '#5cc05c';
     }};
     border: 2px solid ${variables.backgroundColorPage};

@@ -139,7 +139,7 @@ const SettingsPage: React.FC = () => {
         const p = String(value) as LLMProvider;
         setProvider(p);
         setModel(DEFAULT_MODELS[p]);
-        if (p !== 'openai_compatible') setBaseUrl('');
+        if (p !== 'openai_compatible') {setBaseUrl('');}
     };
 
     const handleSave = async () => {
@@ -190,7 +190,7 @@ const SettingsPage: React.FC = () => {
         }
     };
 
-    if (loading) return <WaitSpinner size="medium" />;
+    if (loading) {return <WaitSpinner size="medium" />;}
 
     return (
         <Card>

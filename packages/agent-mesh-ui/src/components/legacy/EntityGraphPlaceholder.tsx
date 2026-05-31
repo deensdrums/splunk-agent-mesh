@@ -45,17 +45,17 @@ const EntityTag = styled.span<{ kind: string }>`
     font-size: 11px;
     font-family: ${variables.monoFontFamily};
     background: ${({ kind }) => {
-        if (kind === 'user') return '#5cc05c22';
-        if (kind === 'host') return '#4c9de822';
-        if (kind === 'domain') return '#e84c4c22';
-        if (kind === 'ip') return '#e8a14c22';
+        if (kind === 'user') {return '#5cc05c22';}
+        if (kind === 'host') {return '#4c9de822';}
+        if (kind === 'domain') {return '#e84c4c22';}
+        if (kind === 'ip') {return '#e8a14c22';}
         return variables.backgroundColorSection;
     }};
     color: ${({ kind }) => {
-        if (kind === 'user') return '#5cc05c';
-        if (kind === 'host') return '#4c9de8';
-        if (kind === 'domain') return '#e84c4c';
-        if (kind === 'ip') return '#e8a14c';
+        if (kind === 'user') {return '#5cc05c';}
+        if (kind === 'host') {return '#4c9de8';}
+        if (kind === 'domain') {return '#e84c4c';}
+        if (kind === 'ip') {return '#e8a14c';}
         return variables.contentColorDefault;
     }};
     border: 1px solid currentColor;

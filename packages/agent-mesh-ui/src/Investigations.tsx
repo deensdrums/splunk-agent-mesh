@@ -17,7 +17,7 @@ const Investigations: React.FC = () => {
             <TabLayout
                 activePanelId={activeTab}
                 onChange={(_e: unknown, { activePanelId }: { activePanelId?: string }) => {
-                    if (activePanelId) setActiveTab(activePanelId as Tab);
+                    if (activePanelId) {setActiveTab(activePanelId as Tab);}
                 }}
             >
                 <TabLayout.Panel label="Investigation" panelId="investigation">

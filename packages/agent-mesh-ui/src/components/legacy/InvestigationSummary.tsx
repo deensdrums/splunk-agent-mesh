@@ -32,9 +32,9 @@ const SeverityBadge = styled.span<{ severity: string }>`
     font-size: ${variables.fontSizeSmall};
     font-weight: ${variables.fontWeightSemiBold};
     background: ${({ severity }) => {
-        if (severity === 'Critical') return '#b22222';
-        if (severity === 'High') return '#e84c4c';
-        if (severity === 'Medium') return '#e8a14c';
+        if (severity === 'Critical') {return '#b22222';}
+        if (severity === 'High') {return '#e84c4c';}
+        if (severity === 'Medium') {return '#e8a14c';}
         return '#5cc05c';
     }};
     color: #fff;
