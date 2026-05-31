@@ -1,13 +1,35 @@
-import React from 'react';
-import styled from 'styled-components';
+import React, { useEffect, useRef } from 'react';
+import styled, { keyframes } from 'styled-components';
 import { variables } from '@splunk/themes';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import { AgentDescriptor, AgentEvent, Artifact, InvestigationResult } from '../types';
+import { useStaggeredReveal } from '../hooks/useStaggeredReveal';
 import ArtifactRenderer from './ArtifactRenderer';
 import EventRenderer from './EventRenderer';
 import MarkdownView from './MarkdownView';
 import AgentStatusBadge from './AgentStatusBadge';
+
+// Cards reveal one at a time (even when several events arrive in one response)
+// and fade/slide in as they paint.
+const STAGGER_INTERVAL_MS = 300;
+// Treat the view as "stuck to bottom" if within this many px of the end.
+const STICK_THRESHOLD_PX = 40;
+
+const fadeSlideIn = keyframes`
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+`;
+
+const ScrollArea = styled.div`
+    max-height: 70vh;
+    overflow-y: auto;
+    padding-right: ${variables.spacingSmall};
+`;
+
+const RevealItem = styled.div`
+    animation: ${fadeSlideIn} 150ms ease-out;
+`;
 
 interface Props {
     descriptors: AgentDescriptor[];
@@ -84,13 +106,38 @@ const SectionTitle = styled.span`
  * event corresponds to the Nth search artifact, since the harness runs at most
  * one search per turn). Falls back to markdown for legacy single-shot agents.
  */
-const AgentBody: React.FC<{ events?: AgentEvent[]; markdown: string; artifacts: Artifact[] }> = ({
-    events,
-    markdown,
-    artifacts,
-}) => {
-    if (!events || events.length === 0) {
-        return (
+const AgentBody: React.FC<{
+    events?: AgentEvent[];
+    markdown: string;
+    artifacts: Artifact[];
+    resetKey: unknown;
+}> = ({ events, markdown, artifacts, resetKey }) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const stickToBottom = useRef(true);
+    const hasEvents = !!events && events.length > 0;
+    const revealed = useStaggeredReveal(hasEvents ? events!.length : 0, STAGGER_INTERVAL_MS, resetKey);
+
+    const handleScroll = () => {
+        const el = scrollRef.current;
+        if (!el) {
+            return;
+        }
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        stickToBottom.current = distanceFromBottom < STICK_THRESHOLD_PX;
+    };
+
+    // Keep the newest revealed card in view — but only if the user hasn't
+    // scrolled up to read an earlier card.
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (el && stickToBottom.current) {
+            el.scrollTop = el.scrollHeight;
+        }
+    }, [revealed, markdown, artifacts.length]);
+
+    let body: React.ReactNode;
+    if (!hasEvents) {
+        body = (
             <>
                 <MarkdownView content={markdown} />
                 {artifacts.map((artifact) => (
@@ -98,33 +145,40 @@ const AgentBody: React.FC<{ events?: AgentEvent[]; markdown: string; artifacts: 
                 ))}
             </>
         );
+    } else {
+        let searchIndex = 0;
+        const visible = events!.slice(0, revealed);
+        const rendered = visible.map((event, idx) => {
+            let artifact: Artifact | undefined;
+            if (event.type === 'splunk_search') {
+                artifact = artifacts[searchIndex];
+                searchIndex += 1;
+            }
+            return (
+                // eslint-disable-next-line react/no-array-index-key
+                <RevealItem key={`event-${idx}`}>
+                    <EventRenderer event={event} />
+                    {artifact && <ArtifactRenderer artifact={artifact} />}
+                </RevealItem>
+            );
+        });
+        // Artifacts not tied to a search event (defensive) are only shown once
+        // every event is revealed, so none ever appears before its search card.
+        const leftover = revealed >= events!.length ? artifacts.slice(searchIndex) : [];
+        body = (
+            <>
+                {rendered}
+                {leftover.map((artifact) => (
+                    <ArtifactRenderer key={artifact.id} artifact={artifact} />
+                ))}
+            </>
+        );
     }
 
-    let searchIndex = 0;
-    const rendered = events.map((event, idx) => {
-        let artifact: Artifact | undefined;
-        if (event.type === 'splunk_search') {
-            artifact = artifacts[searchIndex];
-            searchIndex += 1;
-        }
-        return (
-            // eslint-disable-next-line react/no-array-index-key
-            <React.Fragment key={`event-${idx}`}>
-                <EventRenderer event={event} />
-                {artifact && <ArtifactRenderer artifact={artifact} />}
-            </React.Fragment>
-        );
-    });
-
-    // Any artifacts beyond those matched to a search event (defensive).
-    const leftover = artifacts.slice(searchIndex);
     return (
-        <>
-            {rendered}
-            {leftover.map((artifact) => (
-                <ArtifactRenderer key={artifact.id} artifact={artifact} />
-            ))}
-        </>
+        <ScrollArea ref={scrollRef} onScroll={handleScroll}>
+            {body}
+        </ScrollArea>
     );
 };
 
@@ -214,6 +268,7 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) 
                             events={output.events}
                             markdown={output.markdown}
                             artifacts={artifactsByAgent.get(agentId) || []}
+                            resetKey={result.id}
                         />
                     </Card>
                 );

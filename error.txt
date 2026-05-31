@@ -1,9 +1,0 @@
-2026-05-18 21:23:48,628 ERROR	[6a0bbba492107422e70] __init__:345 - Unable to obtain template "ai-investigator:/templates/Investigations.html":
-Traceback (most recent call last):
-  File "/Applications/Splunk/lib/python3.13/site-packages/splunk/appserver/mrsparkle/controllers/__init__.py", line 340, in render_template
-    templateInstance = mako_lookup.get_template(template_name)
-  File "/Applications/Splunk/lib/python3.13/site-packages/splunk/appserver/mrsparkle/controllers/__init__.py", line 220, in get_template
-    raise_top_level_lookup_exception(uri)
-  File "/Applications/Splunk/lib/python3.13/site-packages/splunk/appserver/mrsparkle/controllers/__init__.py", line 128, in raise_top_level_lookup_exception
-    raise exceptions.TopLevelLookupException(_("Splunk has failed to locate the template for uri '%s'." % uri))
-TopLevelLookupException: Splunk has failed to locate the template for uri 'ai-investigator:/templates/Investigations.html'.
