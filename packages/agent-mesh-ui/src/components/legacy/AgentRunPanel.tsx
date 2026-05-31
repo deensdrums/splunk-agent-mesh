@@ -34,9 +34,9 @@ const StatusIcon = styled.span<{ status: AgentStatus }>`
     width: 18px;
     text-align: center;
     color: ${({ status }) => {
-        if (status === 'complete') return '#5cc05c';
-        if (status === 'error') return '#e84c4c';
-        if (status === 'running') return variables.accentColorL10;
+        if (status === 'complete') {return '#5cc05c';}
+        if (status === 'error') {return '#e84c4c';}
+        if (status === 'running') {return variables.accentColorL10;}
         return variables.contentColorMuted;
     }};
 `;
@@ -55,9 +55,9 @@ const StepMessage = styled.span`
 `;
 
 function statusIcon(status: AgentStatus): React.ReactNode {
-    if (status === 'complete') return '✓';
-    if (status === 'error') return '✗';
-    if (status === 'running') return <WaitSpinner size="small" />;
+    if (status === 'complete') {return '✓';}
+    if (status === 'error') {return '✗';}
+    if (status === 'running') {return <WaitSpinner size="small" />;}
     return '○';
 }
 

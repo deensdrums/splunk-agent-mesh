@@ -128,7 +128,7 @@ const InvestigationPage: React.FC = () => {
                     },
                     onAgentComplete: (agentId, output, artifacts) => {
                         setResult((prev) => {
-                            if (!prev) return prev;
+                            if (!prev) {return prev;}
                             const existingIds = new Set((prev.artifacts || []).map((a) => a.id));
                             const newArtifacts = artifacts.filter((a) => !existingIds.has(a.id));
                             return {
@@ -149,7 +149,7 @@ const InvestigationPage: React.FC = () => {
                     },
                     onAgentUpdate: (agentId, output, artifacts) => {
                         setResult((prev) => {
-                            if (!prev) return prev;
+                            if (!prev) {return prev;}
                             const existingIds = new Set((prev.artifacts || []).map((a) => a.id));
                             const newArtifacts = artifacts.filter((a) => !existingIds.has(a.id));
                             return {
@@ -208,7 +208,7 @@ const InvestigationPage: React.FC = () => {
                     demo: isDemo,
                 };
             const start = await apiClient.startInvestigation(req).catch((startErr) => {
-                if (isDemo) return null;
+                if (isDemo) {return null;}
                 throw startErr;
             });
 

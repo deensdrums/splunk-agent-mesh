@@ -122,6 +122,7 @@ const ScrollArea = styled.div`
     max-height: 70vh;
     min-height: 180px;
     overflow-y: auto;
+
     /* Extra bottom padding keeps the newest auto-scrolled card clear of the
        status footer so it stays comfortably readable. */
     padding: ${variables.spacingMedium} ${variables.spacingMedium} ${variables.spacingLarge};
