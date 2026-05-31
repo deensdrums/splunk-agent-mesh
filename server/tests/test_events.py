@@ -168,6 +168,57 @@ def test_loop_recovers_from_malformed_then_finishes():
     )
 
 
+def test_handoff_on_last_iteration_gets_finalize_turn():
+    # max_iterations=1: the hunter hands off on its only iteration, so the
+    # summarizing turn must come from the post-loop finalize turn instead.
+    handoff = _envelope(
+        {"type": "narration", "title": "Found it", "text": "compromise", "payload": {}},
+        {
+            "type": "handoff",
+            "title": "Report please",
+            "text": "delegating",
+            "payload": {"sub_agent": "executive_brief", "task": "summarize_findings"},
+        },
+    )
+    final = _envelope(
+        {"type": "result_summary", "title": "Report", "text": "summarized", "payload": {}},
+        {"type": "final", "title": "Done", "text": "final", "payload": {}},
+    )
+    # Call 1: hunter -> handoff. Call 2: reporting sub-agent. Call 3: finalize turn.
+    llm = FakeLLM([handoff, "## Executive summary\nHigh severity.", final])
+    reporting = _config(id="executive_brief", agent_role="subagent", agent_mode="single_shot")
+    agent = AgenticLLMAgent(_config(max_iterations=1), llm, lambda: None, {"executive_brief": reporting})
+    output, _ = agent.run({"description": "x"})
+
+    assert [e["type"] for e in output["events"]] == ["narration", "handoff", "result_summary", "final"]
+    assert len(llm.calls) == 3
+    # The finalize turn received the budget-limit instruction.
+    assert any("step limit" in m.content for m in llm.calls[2] if m.role == "user")
+
+
+def test_synthetic_final_when_budget_exhausted_on_search():
+    # The only response is a search; with max_iterations=1 there is no turn to
+    # interpret results, and the finalize turn also yields no terminal events,
+    # so the harness appends a synthetic final.
+    search = _envelope(
+        {
+            "type": "splunk_search",
+            "title": "Logins",
+            "text": "checking",
+            "payload": {"query": "index=auth | stats count", "type": "table"},
+        }
+    )
+    # Finalize turn returns only another (ignored) action -> synthetic close.
+    llm = FakeLLM([search, search])
+    agent = AgenticLLMAgent(_config(max_iterations=1), llm, lambda: FakeSplunk())
+    output, _ = agent.run({"description": "x"})
+
+    types = [e["type"] for e in output["events"]]
+    assert types[0] == "splunk_search"
+    assert types[-1] == "final"
+    assert output["events"][-1]["payload"].get("reason") == "max_iterations_reached"
+
+
 def test_handoff_invokes_subagent_then_threat_hunter_summarizes():
     handoff = _envelope(
         {"type": "narration", "title": "Found it", "text": "compromise", "payload": {}},

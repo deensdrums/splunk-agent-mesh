@@ -39,6 +39,17 @@ from .events import (
 
 logger = logging.getLogger(__name__)
 
+# Sent to the model after the iteration budget is spent while an action is still
+# pending (e.g. a handoff or search landed on the last iteration). It forces a
+# closing turn so the reporting output / search results actually reach the user
+# instead of the stream dangling on an unresolved action event.
+FINALIZE_INSTRUCTION = (
+    "You have reached the investigation step limit and cannot run any more searches or handoffs. "
+    "Using everything gathered so far (including any reporting-agent output above), respond now with "
+    "your closing events ONLY: a result_summary, an optional finding, then a final event. "
+    "Do NOT emit splunk_search or handoff events. Remember to always respond with json."
+)
+
 
 def _format_request(request: dict) -> str:
     fields = []
@@ -108,6 +119,7 @@ class AgenticLLMAgent:
         all_events: list[dict] = []
         model_used = self.config.model
         iteration_count = 0
+        terminated_cleanly = False  # True once the model emits a terminal (non-action) turn
 
         for iteration in range(self.config.max_iterations):
             logger.info(
@@ -184,8 +196,24 @@ class AgenticLLMAgent:
             if action_type is None:
                 # Last event was final (or purely informational with no action
                 # requested): the turn is terminal. Stop without looping.
+                terminated_cleanly = True
                 logger.info("Agent %s: finished after %d iteration(s).", self.config.id, iteration_count)
                 break
+
+        if not terminated_cleanly and all_events:
+            # The budget ran out with an action still pending (its results are
+            # already in `messages`). Give the model one closing turn so that
+            # output — especially a reporting handoff — reaches the user.
+            iteration_count = self._finalize_turn(
+                messages, all_events, model_used, started, iteration_count, progress_callback,
+            )
+
+        # Safety net: never end on a dangling action. If there is still no final
+        # event, append a synthetic one so the UI always resolves to a close.
+        if all_events and not any(e["type"] == "final" for e in all_events):
+            all_events.append(self._synthetic_final())
+            iteration_count += 1
+            self._emit_progress(progress_callback, all_events, [], model_used, started, iteration_count)
 
         output = {
             "agent_id": self.config.id,
@@ -227,6 +255,60 @@ class AgenticLLMAgent:
             },
             new_artifacts,
         )
+
+    def _finalize_turn(
+        self,
+        messages: list[Message],
+        all_events: list[dict],
+        model_used: str,
+        started: str,
+        iteration_count: int,
+        progress_callback: Callable[[dict, list[dict]], None] | None,
+    ) -> int:
+        """One closing model turn after the budget is spent.
+
+        Appends only terminal (non-action) events the model returns; any
+        splunk_search/handoff it emits despite the instruction is ignored, since
+        there is no budget left to execute it. Returns the updated iteration
+        count.
+        """
+        messages.append(Message(role="user", content=FINALIZE_INSTRUCTION))
+        try:
+            response = self.llm.complete(
+                messages=[Message(role="system", content=self.config.system_prompt), *messages],
+                model=self.config.model,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+            )
+        except Exception:
+            logger.exception("Agent %s: finalize turn failed.", self.config.id)
+            return iteration_count
+
+        events, corrective = parse_and_validate(response.content)
+        if corrective or events is None:
+            logger.warning("Agent %s: finalize turn returned invalid JSON; using synthetic close.", self.config.id)
+            return iteration_count
+
+        terminal = [e for e in events if e["type"] not in ACTION_EVENT_TYPES]
+        if not terminal:
+            return iteration_count
+
+        all_events.extend(terminal)
+        iteration_count += 1
+        self._emit_progress(progress_callback, all_events, [], model_used, started, iteration_count)
+        return iteration_count
+
+    def _synthetic_final(self) -> dict:
+        """A harness-authored final event so the stream never ends on an action."""
+        return {
+            "type": "final",
+            "title": "Investigation incomplete",
+            "text": (
+                "The investigation reached its step limit before producing a final summary. "
+                "Review the findings and searches above; re-run to continue if needed."
+            ),
+            "payload": {"reason": "max_iterations_reached"},
+        }
 
     def _execute_search(self, event: dict, default_earliest: str) -> tuple[dict, dict | None]:
         """Execute a splunk_search event's payload. Returns (llm_result, artifact)."""
