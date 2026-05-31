@@ -52,3 +52,8 @@ AGENTS_CONF_PATHS: list[Path] = [_APP_DEFAULT_CONF, _APP_LOCAL_CONF]
 
 # Log level
 LOG_LEVEL: str = os.getenv("AGENT_MESH_LOG_LEVEL", "INFO")
+
+# Set AGENT_MESH_LOG_LLM=1 to log full LLM requests (system + messages) and raw
+# responses at INFO. Verbose — intended for debugging the response contract.
+# Raw responses are always logged on a validation failure regardless of this flag.
+LOG_LLM_IO: bool = (_parse_override(os.getenv("AGENT_MESH_LOG_LLM")) or False)
