@@ -1,9 +1,82 @@
-2026-05-18 21:23:48,628 ERROR	[6a0bbba492107422e70] __init__:345 - Unable to obtain template "ai-investigator:/templates/Investigations.html":
-Traceback (most recent call last):
-  File "/Applications/Splunk/lib/python3.13/site-packages/splunk/appserver/mrsparkle/controllers/__init__.py", line 340, in render_template
-    templateInstance = mako_lookup.get_template(template_name)
-  File "/Applications/Splunk/lib/python3.13/site-packages/splunk/appserver/mrsparkle/controllers/__init__.py", line 220, in get_template
-    raise_top_level_lookup_exception(uri)
-  File "/Applications/Splunk/lib/python3.13/site-packages/splunk/appserver/mrsparkle/controllers/__init__.py", line 128, in raise_top_level_lookup_exception
-    raise exceptions.TopLevelLookupException(_("Splunk has failed to locate the template for uri '%s'." % uri))
-TopLevelLookupException: Splunk has failed to locate the template for uri 'ai-investigator:/templates/Investigations.html'.
+(base) asneed@Mac splunk-hackathon % yarn ru
+n build *
+yarn run v1.22.22
+$ yarn workspaces run build babel.config.js docs error.txt node_modules notes.txt package.json packages prompt.md README.md server splunk yarn.lock
+
+> @splunk/agent-mesh-ui
+$ node bin/build.js build && yarn types:build babel.config.js docs error.txt node_modules notes.txt package.json packages prompt.md README.md server splunk yarn.lock
+asset Investigations.js 102 KiB [compared for emit] [minimized] (name: Investigations)
+orphan modules 97 KiB [orphan] 26 modules
+runtime modules 937 bytes 4 modules
+built modules 100 KiB [built]
+  ./src/Investigations.tsx + 26 modules 99.9 KiB [not cacheable] [built] [code generated]
+  external "@splunk/splunk-utils/config" 42 bytes [optional] [built] [code generated]
+webpack 5.106.2 compiled successfully in 513 ms
+$ tsc babel.config.js docs error.txt node_modules notes.txt package.json packages prompt.md README.md server splunk yarn.lock
+error TS6054: File 'README.md' has an unsupported extension. The only supported extensions are '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6054: File 'error.txt' has an unsupported extension. The only supported extensions are '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6054: File 'notes.txt' has an unsupported extension. The only supported extensions are '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6054: File 'package.json' has an unsupported extension. The only supported extensions are '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6054: File 'prompt.md' has an unsupported extension. The only supported extensions are '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6054: File 'yarn.lock' has an unsupported extension. The only supported extensions are '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6231: Could not resolve the path 'docs' with the extensions: '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6231: Could not resolve the path 'node_modules' with the extensions: '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6231: Could not resolve the path 'packages' with the extensions: '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6231: Could not resolve the path 'server' with the extensions: '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6231: Could not resolve the path 'splunk' with the extensions: '.ts', '.tsx', '.d.ts', '.cts', '.d.cts', '.mts', '.d.mts'.
+  The file is in the program because:
+    Root file specified for compilation
+
+error TS6504: File 'babel.config.js' is a JavaScript file. Did you mean to enable the 'allowJs' option?
+  The file is in the program because:
+    Root file specified for compilation
+
+
+Found 12 errors.
+
+error Command failed with exit code 2.
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+error Command failed with exit code 2.
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+error Command failed.
+Exit code: 2
+Command: /opt/homebrew/Cellar/node/25.8.1_1/bin/node
+Arguments: /opt/homebrew/Cellar/yarn/1.22.22/libexec/lib/cli.js run build babel.config.js docs error.txt node_modules notes.txt package.json packages prompt.md README.md server splunk yarn.lock
+Directory: /Users/asneed/git/splunk-hackathon/packages/agent-mesh-ui
+Output:
+
+info Visit https://yarnpkg.com/en/docs/cli/workspaces for documentation about this command.
+error Command failed with exit code 2.
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+(base) asneed@Mac splunk-hackathon %
+
