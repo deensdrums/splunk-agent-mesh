@@ -28,6 +28,26 @@ def test_valid_envelope_parses():
     assert [e["type"] for e in events] == ["narration", "final"]
 
 
+def test_json_fence_is_stripped():
+    inner = '{"type": "final", "title": "Done", "text": "x", "payload": {}}'
+    raw = f"```json\n{{\"events\": [{inner}]}}\n```"
+    events, corrective = parse_and_validate(raw)
+    assert corrective is None
+    assert events is not None and events[0]["type"] == "final"
+
+
+def test_bare_fence_without_language_is_stripped():
+    raw = '```\n{"events": [{"type": "narration", "title": "t", "text": "x", "payload": {}}]}\n```'
+    events, corrective = parse_and_validate(raw)
+    assert corrective is None and events is not None
+
+
+def test_bare_json_still_parses_unchanged():
+    raw = _envelope({"type": "narration", "title": "t", "text": "x", "payload": {}})
+    events, corrective = parse_and_validate(raw)
+    assert corrective is None and events is not None
+
+
 def test_non_json_routes_corrective():
     events, corrective = parse_and_validate("Here is my answer, not JSON.")
     assert events is None

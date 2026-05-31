@@ -24,6 +24,7 @@ import json
 import logging
 from typing import Callable
 
+from ..config import LOG_LLM_IO
 from ..investigation_models import now_iso
 from ..llm.base import LLMProvider, Message
 from ..splunk_client import SplunkClient
@@ -51,6 +52,14 @@ def _format_request(request: dict) -> str:
 def _truncate_rows(rows: list[dict], max_rows: int = 20) -> tuple[list[dict], int]:
     total = len(rows)
     return rows[:max_rows], total
+
+
+def _truncate_text(text: str, limit: int = 4000) -> str:
+    if text is None:
+        return "<none>"
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}… [truncated {len(text) - limit} chars]"
 
 
 def _events_to_markdown(events: list[dict]) -> str:
@@ -106,9 +115,16 @@ class AgenticLLMAgent:
                 self.config.id, iteration + 1, self.config.max_iterations,
             )
 
+            request_messages = [Message(role="system", content=self.config.system_prompt), *messages]
+            if LOG_LLM_IO:
+                logger.info(
+                    "Agent %s: LLM request (iteration %d):\n%s",
+                    self.config.id, iteration + 1,
+                    "\n".join(f"[{m.role}] {m.content}" for m in request_messages),
+                )
             try:
                 response = self.llm.complete(
-                    messages=[Message(role="system", content=self.config.system_prompt), *messages],
+                    messages=request_messages,
                     model=self.config.model,
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
@@ -120,13 +136,22 @@ class AgenticLLMAgent:
                 return self._error_output(started, str(exc)), all_artifacts
 
             model_used = response.model
+            if LOG_LLM_IO:
+                logger.info(
+                    "Agent %s: raw LLM response (iteration %d):\n%s",
+                    self.config.id, iteration + 1, response.content,
+                )
             events, corrective = parse_and_validate(response.content)
 
             if corrective:
                 # Malformed output: echo it back as the assistant turn, then
                 # route the corrective message so the model can retry. The UI
-                # never sees this — only validated events reach it.
-                logger.warning("Agent %s: invalid response at iteration %d; retrying.", self.config.id, iteration + 1)
+                # never sees this — only validated events reach it. Always log
+                # the raw body here (truncated) so the failure is diagnosable.
+                logger.warning(
+                    "Agent %s: invalid response at iteration %d; retrying. Raw response:\n%s",
+                    self.config.id, iteration + 1, _truncate_text(response.content),
+                )
                 messages.append(Message(role="assistant", content=response.content))
                 messages.append(Message(role="user", content=CORRECTIVE_MESSAGE))
                 iteration_count += 1

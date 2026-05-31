@@ -17,11 +17,24 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 logger = logging.getLogger(__name__)
+
+# Matches a response that is entirely one Markdown code fence, e.g.
+#   ```json\n{ ... }\n```   or   ```\n{ ... }\n```
+# Models (Claude and GPT alike) wrap JSON in a fence even when told not to, so
+# we tolerate exactly this on the transport layer while keeping the schema
+# strict. Bare JSON does not match (no leading ```), so it is never touched.
+_CODE_FENCE_RE = re.compile(r"^\s*```[a-zA-Z0-9]*\s*\n?(.*?)\n?```\s*$", re.DOTALL)
+
+
+def _strip_code_fence(text: str) -> str:
+    match = _CODE_FENCE_RE.match(text)
+    return match.group(1).strip() if match else text
 
 # The corrective message routed back to the model whenever its output is not
 # valid JSON matching the contract. Kept as a constant so the harness and tests
@@ -100,26 +113,33 @@ def parse_and_validate(raw_text: str) -> tuple[list[dict] | None, str | None]:
     of the pipeline keeps working with JSON-serializable structures.
     """
     if not raw_text or not raw_text.strip():
-        logger.debug("Empty model response; routing corrective message.")
+        logger.warning("Threat hunter response rejected: empty response.")
         return None, CORRECTIVE_MESSAGE
 
+    # Strict first (fast path for well-behaved bare JSON), then one tolerant
+    # retry that unwraps a surrounding Markdown code fence.
+    candidate = _strip_code_fence(raw_text.strip())
     try:
-        data = json.loads(raw_text)
-    except (json.JSONDecodeError, TypeError):
-        logger.debug("Model response was not valid JSON; routing corrective message.")
+        data = json.loads(candidate)
+    except (json.JSONDecodeError, TypeError) as exc:
+        logger.warning("Threat hunter response rejected: not valid JSON (%s).", exc)
         return None, CORRECTIVE_MESSAGE
 
     if not isinstance(data, dict):
-        logger.debug("Model response JSON was not an object; routing corrective message.")
+        logger.warning(
+            "Threat hunter response rejected: top-level JSON is %s, expected an object.",
+            type(data).__name__,
+        )
         return None, CORRECTIVE_MESSAGE
 
     try:
         envelope = EventsEnvelope.model_validate(data)
     except ValidationError as exc:
-        logger.debug("Model response failed schema validation: %s", exc)
+        logger.warning("Threat hunter response rejected: schema validation failed: %s", exc)
         return None, CORRECTIVE_MESSAGE
 
     if not envelope.events:
+        logger.warning("Threat hunter response rejected: empty events array.")
         return None, CORRECTIVE_MESSAGE
 
     return [event.model_dump() for event in envelope.events], None
