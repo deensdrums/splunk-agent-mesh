@@ -45,6 +45,11 @@ jest.mock('@splunk/react-ui/Select', () => {
 jest.mock('react-markdown', () => ({ children }: { children: React.ReactNode }) => <div>{children}</div>);
 jest.mock('remark-gfm', () => () => null);
 jest.mock('rehype-sanitize', () => () => null);
+// @splunk/visualizations pulls in canvas/Popover internals that don't load
+// under jsdom; stub the chart components used by ArtifactRenderer.
+jest.mock('@splunk/visualizations/Column', () => () => <div>Column</div>);
+jest.mock('@splunk/visualizations/Line', () => () => <div>Line</div>);
+jest.mock('@splunk/visualizations/Pie', () => () => <div>Pie</div>);
 
 test('renders Splunk Agent Mesh header', () => {
     render(<Investigations />);

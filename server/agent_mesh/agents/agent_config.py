@@ -19,3 +19,7 @@ class AgentConfig:
     depends_on: list[str] = field(default_factory=list)
     agent_mode: str = "single_shot"
     max_iterations: int = 10
+    # "primary" agents are user-visible top-level agents in the mesh.
+    # "subagent" agents are delegated internal capabilities (e.g. the
+    # reporting agent) invoked only by a primary agent, never shown as a peer.
+    agent_role: str = "primary"

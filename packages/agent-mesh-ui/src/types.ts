@@ -15,10 +15,30 @@ export interface AgentDescriptor {
     depends_on?: string[];
 }
 
+// Structured event emitted by the threat hunter. The agent now responds with
+// an ordered array of these instead of loose markdown.
+export type AgentEventType =
+    | 'narration'
+    | 'splunk_search'
+    | 'result_summary'
+    | 'finding'
+    | 'handoff'
+    | 'final';
+
+export interface AgentEvent {
+    type: AgentEventType;
+    title: string;
+    text: string;
+    payload: Record<string, unknown>;
+}
+
 export interface AgentOutput {
     agent_id: string;
     display_name: string;
     status: AgentRunStatus;
+    // Structured events are the primary output; markdown is kept as a fallback
+    // for older single-shot agents and dependency context.
+    events?: AgentEvent[];
     markdown: string;
     model?: string;
     started_at?: string;

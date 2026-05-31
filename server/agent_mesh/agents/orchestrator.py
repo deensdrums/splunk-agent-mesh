@@ -37,7 +37,11 @@ class Orchestrator:
         self.splunk_client_factory = splunk_client_factory or (lambda: None)
 
     def get_agent_descriptors(self) -> list[dict]:
-        """Public-facing list of configured agents (no system prompts)."""
+        """Public-facing list of user-visible agents (no system prompts).
+
+        Sub-agents (e.g. the reporting agent) are intentionally excluded — they
+        are delegated internal capabilities, never shown as top-level peers.
+        """
         return [
             {
                 "id": a.id,
@@ -49,6 +53,7 @@ class Orchestrator:
                 "depends_on": a.depends_on,
             }
             for a in self.conf_reader.get_agents()
+            if a.agent_role == "primary"
         ]
 
     def run(
@@ -57,12 +62,16 @@ class Orchestrator:
         investigation_id: str | None = None,
         progress_callback: Callable[[dict], None] | None = None,
     ) -> dict:
-        agents = self.conf_reader.get_agents()
+        all_agents = self.conf_reader.get_agents()
+        # Only primary agents are executed top-level and shown in the UI.
+        # Sub-agents are looked up by id and delegated to by primary agents.
+        agents = [a for a in all_agents if a.agent_role == "primary"]
+        subagents = {a.id: a for a in all_agents if a.agent_role == "subagent"}
         agent_order = [a.id for a in agents]
         run_id = investigation_id or request.get("investigation_id", "inv-001")
 
         if request.get("demo"):
-            logger.info("Demo mode: returning canned per-agent markdown.")
+            logger.info("Demo mode: returning canned threat-hunter events.")
             return build_demo_result(agents, investigation_id=run_id, owner=self.context.username)
 
         started = now_iso()
@@ -80,7 +89,7 @@ class Orchestrator:
                 agent_request["dependency_context"] = dependency_context
 
             if cfg.agent_mode == "agentic" and self.llm:
-                agentic_agent = AgenticLLMAgent(cfg, self.llm, self.splunk_client_factory)
+                agentic_agent = AgenticLLMAgent(cfg, self.llm, self.splunk_client_factory, subagents)
 
                 def _iteration_cb(
                     intermediate_output: dict,

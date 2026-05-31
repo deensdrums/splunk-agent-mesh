@@ -68,6 +68,11 @@ def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig |
         logger.warning("Agent %r has invalid agent_mode %r; defaulting to single_shot.", agent_id, agent_mode)
         agent_mode = "single_shot"
 
+    agent_role = merged.get("agent_role", "primary")
+    if agent_role not in ("primary", "subagent"):
+        logger.warning("Agent %r has invalid agent_role %r; defaulting to primary.", agent_id, agent_role)
+        agent_role = "primary"
+
     return AgentConfig(
         id=agent_id,
         display_name=merged.get("display_name", agent_id),
@@ -83,6 +88,7 @@ def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig |
         depends_on=_coerce_list(merged.get("depends_on")),
         agent_mode=agent_mode,
         max_iterations=_coerce_int(merged.get("max_iterations"), 10),
+        agent_role=agent_role,
     )
 
 

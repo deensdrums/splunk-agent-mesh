@@ -1,7 +1,21 @@
-"""Agentic LLM agent with iterative tool-use loop.
+"""Threat-hunter harness loop driven by the structured event contract.
 
-Unlike the single-shot LLMAgent, this agent uses the Anthropic tool-use API
-to iteratively search Splunk, observe results, and refine its investigation.
+The threat hunter (spl_hunter) responds with a strict JSON object
+``{"events": [...]}`` (see :mod:`.events`). This harness — not Anthropic's
+native tool-use — drives the investigation:
+
+  1. Call the model and parse/validate its JSON events.
+  2. If the response is malformed, feed back the corrective message and retry.
+  3. Render the events to the UI (via ``progress_callback``).
+  4. Execute at most ONE external action per turn, taken from the LAST event:
+       - ``splunk_search`` -> run the SPL, append results to context, loop.
+       - ``handoff``       -> run the reporting sub-agent, append its output to
+                              context, loop.
+       - ``final`` (or no action event) -> stop.
+
+Driving the loop here (rather than via provider tool-use) keeps it
+provider-agnostic and enforces the "one action per turn, no blind search
+chains" rule the architecture asks for.
 """
 
 from __future__ import annotations
@@ -11,58 +25,18 @@ import logging
 from typing import Callable
 
 from ..investigation_models import now_iso
-from ..llm.anthropic_provider import AnthropicProvider
-from ..llm.base import ToolCall
+from ..llm.base import LLMProvider, Message
 from ..splunk_client import SplunkClient
 from ..tools.splunk_search import run_splunk_search_artifact
 from .agent_config import AgentConfig
+from .events import (
+    ACTION_EVENT_TYPES,
+    CORRECTIVE_MESSAGE,
+    VIZ_HINT_MAP,
+    parse_and_validate,
+)
 
 logger = logging.getLogger(__name__)
-
-_VIZ_HINT_MAP: dict[str, str] = {
-    "column": "timechart",
-    "timechart": "timechart",
-    "line": "line",
-    "pie": "pie",
-    "bar": "bar",
-    "table": "table",
-    "single": "single",
-}
-
-SPLUNK_SEARCH_TOOL = {
-    "name": "splunk_search",
-    "description": (
-        "Execute a SPL search against Splunk and return results. "
-        "Use this to investigate incidents, validate hypotheses, and gather evidence."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "spl": {
-                "type": "string",
-                "description": "The SPL query to execute.",
-            },
-            "earliest": {
-                "type": "string",
-                "description": "Earliest time (e.g., '-24h', '-7d'). Defaults to the investigation time range.",
-            },
-            "latest": {
-                "type": "string",
-                "description": "Latest time (e.g., 'now'). Defaults to 'now'.",
-            },
-            "viz_hint": {
-                "type": "string",
-                "enum": ["timechart", "line", "pie", "bar", "table", "single"],
-                "description": "Visualization hint for chart rendering.",
-            },
-            "title": {
-                "type": "string",
-                "description": "Short title describing what this search investigates.",
-            },
-        },
-        "required": ["spl", "title"],
-    },
-}
 
 
 def _format_request(request: dict) -> str:
@@ -79,35 +53,50 @@ def _truncate_rows(rows: list[dict], max_rows: int = 20) -> tuple[list[dict], in
     return rows[:max_rows], total
 
 
+def _events_to_markdown(events: list[dict]) -> str:
+    """Flatten event texts into markdown.
+
+    Kept so anything that still consumes ``output["markdown"]`` (dependency
+    context for other agents, demo fallbacks) keeps working; the UI renders the
+    structured ``events`` directly.
+    """
+    parts = []
+    for event in events:
+        title = event.get("title", "")
+        text = event.get("text", "")
+        parts.append(f"**{title}**\n\n{text}" if title else text)
+    return "\n\n".join(p for p in parts if p)
+
+
 class AgenticLLMAgent:
-    """Agent that iteratively uses tools to investigate."""
+    """Threat hunter: an agent that drives an iterative event-based loop."""
 
     def __init__(
         self,
         config: AgentConfig,
-        llm: AnthropicProvider,
+        llm: LLMProvider,
         splunk_client_factory: Callable[[], SplunkClient | None],
+        subagents: dict[str, AgentConfig] | None = None,
     ):
         self.config = config
         self.llm = llm
         self.splunk_client_factory = splunk_client_factory
+        # Delegated internal capabilities (e.g. the reporting agent), keyed by
+        # their configured id. Never surfaced to the UI as peers.
+        self.subagents = subagents or {}
 
     def run(
         self,
         request: dict,
         progress_callback: Callable[[dict, list[dict]], None] | None = None,
     ) -> tuple[dict, list[dict]]:
-        """Run the agentic loop. Returns (output, artifacts)."""
+        """Run the harness loop. Returns (output, artifacts)."""
         started = now_iso()
-        user_msg = _format_request(request)
-        messages: list[dict] = [{"role": "user", "content": user_msg}]
-        tools = [SPLUNK_SEARCH_TOOL]
+        messages: list[Message] = [Message(role="user", content=_format_request(request))]
         earliest = request.get("time_range") or "-24h"
 
         all_artifacts: list[dict] = []
-        text_parts: list[str] = []
-        total_input_tokens = 0
-        total_output_tokens = 0
+        all_events: list[dict] = []
         model_used = self.config.model
         iteration_count = 0
 
@@ -118,86 +107,67 @@ class AgenticLLMAgent:
             )
 
             try:
-                response = self.llm.complete_with_tools(
-                    messages=messages,
-                    tools=tools,
-                    system=self.config.system_prompt,
+                response = self.llm.complete(
+                    messages=[Message(role="system", content=self.config.system_prompt), *messages],
                     model=self.config.model,
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
                 )
             except Exception as exc:
-                logger.exception(
-                    "Agent %s: LLM call failed at iteration %d.",
-                    self.config.id, iteration + 1,
-                )
-                if text_parts:
-                    text_parts.append(f"\n\n_Investigation interrupted: {exc}_")
+                logger.exception("Agent %s: LLM call failed at iteration %d.", self.config.id, iteration + 1)
+                if all_events:
                     break
                 return self._error_output(started, str(exc)), all_artifacts
 
-            total_input_tokens += response.input_tokens
-            total_output_tokens += response.output_tokens
             model_used = response.model
+            events, corrective = parse_and_validate(response.content)
 
-            if response.content_text:
-                text_parts.append(response.content_text)
+            if corrective:
+                # Malformed output: echo it back as the assistant turn, then
+                # route the corrective message so the model can retry. The UI
+                # never sees this — only validated events reach it.
+                logger.warning("Agent %s: invalid response at iteration %d; retrying.", self.config.id, iteration + 1)
+                messages.append(Message(role="assistant", content=response.content))
+                messages.append(Message(role="user", content=CORRECTIVE_MESSAGE))
+                iteration_count += 1
+                continue
 
-            if response.stop_reason != "tool_use" or not response.tool_calls:
-                logger.info(
-                    "Agent %s: finished after %d iteration(s) (%d tool calls total).",
-                    self.config.id, iteration + 1, len(all_artifacts),
+            assert events is not None
+            all_events.extend(events)
+
+            last_event = events[-1]
+            action_type = last_event["type"] if last_event["type"] in ACTION_EVENT_TYPES else None
+
+            iteration_artifacts: list[dict] = []
+            if action_type == "splunk_search":
+                result_payload, artifact = self._execute_search(last_event, earliest)
+                if artifact:
+                    iteration_artifacts.append(artifact)
+                    all_artifacts.append(artifact)
+                messages.append(Message(role="assistant", content=response.content))
+                messages.append(
+                    Message(role="user", content=json.dumps({"splunk_search_result": result_payload}, default=str))
                 )
+            elif action_type == "handoff":
+                handoff_result = self._invoke_subagent(last_event, all_events)
+                messages.append(Message(role="assistant", content=response.content))
+                messages.append(Message(role="user", content=handoff_result))
+
+            iteration_count += 1
+            self._emit_progress(progress_callback, all_events, iteration_artifacts, model_used, started, iteration_count)
+
+            if action_type is None:
+                # Last event was final (or purely informational with no action
+                # requested): the turn is terminal. Stop without looping.
+                logger.info("Agent %s: finished after %d iteration(s).", self.config.id, iteration_count)
                 break
 
-            messages.append({"role": "assistant", "content": response.raw_content})
-
-            tool_results = []
-            iteration_artifacts = []
-            for tool_call in response.tool_calls:
-                if tool_call.name == "splunk_search":
-                    result_payload, artifact = self._execute_search(tool_call, earliest)
-                    if artifact:
-                        iteration_artifacts.append(artifact)
-                        all_artifacts.append(artifact)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_call.id,
-                        "content": json.dumps(result_payload, default=str),
-                    })
-                else:
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_call.id,
-                        "content": json.dumps({"error": f"Unknown tool: {tool_call.name}"}),
-                        "is_error": True,
-                    })
-
-            messages.append({"role": "user", "content": tool_results})
-            iteration_count += 1
-
-            if progress_callback:
-                progress_callback(
-                    {
-                        "agent_id": self.config.id,
-                        "display_name": self.config.display_name,
-                        "status": "iterating",
-                        "markdown": "\n\n".join(text_parts),
-                        "model": model_used,
-                        "started_at": started,
-                        "completed_at": None,
-                        "error": None,
-                        "_iteration": iteration_count,
-                    },
-                    iteration_artifacts,
-                )
-
-        markdown = "\n\n".join(text_parts)
         output = {
             "agent_id": self.config.id,
             "display_name": self.config.display_name,
             "status": "completed",
-            "markdown": markdown,
+            "events": all_events,
+            "markdown": _events_to_markdown(all_events),
             "model": model_used,
             "started_at": started,
             "completed_at": now_iso(),
@@ -206,18 +176,42 @@ class AgenticLLMAgent:
         }
         return output, all_artifacts
 
-    def _execute_search(
+    def _emit_progress(
         self,
-        tool_call: ToolCall,
-        default_earliest: str,
-    ) -> tuple[dict, dict | None]:
-        """Execute a splunk_search tool call. Returns (llm_result, artifact)."""
-        spl = tool_call.input.get("spl", "")
-        title = tool_call.input.get("title", "Search")
-        earliest = tool_call.input.get("earliest", default_earliest)
-        latest = tool_call.input.get("latest", "now")
-        viz_hint_raw = tool_call.input.get("viz_hint")
-        viz_hint = _VIZ_HINT_MAP.get(viz_hint_raw) if viz_hint_raw else None
+        progress_callback: Callable[[dict, list[dict]], None] | None,
+        events: list[dict],
+        new_artifacts: list[dict],
+        model: str,
+        started: str,
+        iteration: int,
+    ) -> None:
+        if not progress_callback:
+            return
+        progress_callback(
+            {
+                "agent_id": self.config.id,
+                "display_name": self.config.display_name,
+                "status": "iterating",
+                "events": list(events),
+                "markdown": _events_to_markdown(events),
+                "model": model,
+                "started_at": started,
+                "completed_at": None,
+                "error": None,
+                "_iteration": iteration,
+            },
+            new_artifacts,
+        )
+
+    def _execute_search(self, event: dict, default_earliest: str) -> tuple[dict, dict | None]:
+        """Execute a splunk_search event's payload. Returns (llm_result, artifact)."""
+        payload = event.get("payload", {})
+        spl = payload.get("query", "")
+        title = event.get("title") or "Search"
+        earliest = payload.get("earliest", default_earliest)
+        latest = payload.get("latest", "now")
+        viz_hint_raw = payload.get("type") or payload.get("viz_hint")
+        viz_hint = VIZ_HINT_MAP.get(str(viz_hint_raw).lower()) if viz_hint_raw else None
 
         logger.info("Agent %s: executing search '%s': %s", self.config.id, title, spl[:120])
 
@@ -234,7 +228,6 @@ class AgenticLLMAgent:
 
         rows = artifact.get("rows", [])
         truncated_rows, total_count = _truncate_rows(rows)
-
         llm_result: dict = {
             "status": artifact.get("status"),
             "fields": artifact.get("fields", []),
@@ -246,14 +239,70 @@ class AgenticLLMAgent:
         if total_count > len(truncated_rows):
             llm_result["truncated"] = True
             llm_result["note"] = f"Showing {len(truncated_rows)} of {total_count} total rows."
-
         return llm_result, artifact
+
+    def _invoke_subagent(self, event: dict, events_so_far: list[dict]) -> str:
+        """Run a delegated sub-agent (e.g. reporting) and return text to feed back.
+
+        The sub-agent's output never reaches the UI directly — it is returned
+        to the threat hunter, which summarizes it via result_summary/final
+        events. This keeps the user-facing stream centered on the threat hunter.
+        """
+        payload = event.get("payload", {})
+        requested = payload.get("sub_agent", "")
+        task = payload.get("task", "summarize_findings")
+        subagent = self._resolve_subagent(requested)
+
+        if subagent is None:
+            logger.warning("Agent %s: no sub-agent available for handoff %r.", self.config.id, requested)
+            return (
+                "No reporting sub-agent is available. Produce the final answer yourself "
+                "as a `final` event. Remember to always respond with json."
+            )
+
+        context = (
+            f"You are supporting the threat hunter. Task: {task}.\n\n"
+            f"Investigation events so far:\n{_events_to_markdown(events_so_far)}"
+        )
+        try:
+            response = self.llm.complete(
+                messages=[
+                    Message(role="system", content=subagent.system_prompt),
+                    Message(role="user", content=context),
+                ],
+                model=subagent.model,
+                temperature=subagent.temperature,
+                max_tokens=subagent.max_tokens,
+            )
+            report = response.content
+        except Exception as exc:
+            logger.exception("Sub-agent %s failed during handoff.", subagent.id)
+            return (
+                f"The reporting sub-agent failed: {exc}. Produce the final answer yourself "
+                "as a `final` event. Remember to always respond with json."
+            )
+
+        return (
+            f"The reporting sub-agent ({subagent.id}) returned the following report:\n\n"
+            f"{report}\n\n"
+            "Summarize this for the user using a `result_summary` event and then a `final` event. "
+            "Remember to always respond with json."
+        )
+
+    def _resolve_subagent(self, requested: str) -> AgentConfig | None:
+        """Resolve a handoff target. Exact id match, else the sole sub-agent."""
+        if requested and requested in self.subagents:
+            return self.subagents[requested]
+        if len(self.subagents) == 1:
+            return next(iter(self.subagents.values()))
+        return None
 
     def _error_output(self, started: str, error: str) -> dict:
         return {
             "agent_id": self.config.id,
             "display_name": self.config.display_name,
             "status": "error",
+            "events": [],
             "markdown": f"_Agent failed: {error}_",
             "model": self.config.model,
             "started_at": started,

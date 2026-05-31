@@ -3,8 +3,9 @@ import styled from 'styled-components';
 import { variables } from '@splunk/themes';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
-import { AgentDescriptor, Artifact, InvestigationResult } from '../types';
+import { AgentDescriptor, AgentEvent, Artifact, InvestigationResult } from '../types';
 import ArtifactRenderer from './ArtifactRenderer';
+import EventRenderer from './EventRenderer';
 import MarkdownView from './MarkdownView';
 import AgentStatusBadge from './AgentStatusBadge';
 
@@ -76,18 +77,56 @@ const SectionTitle = styled.span`
     color: ${variables.contentColorActive};
 `;
 
-function fallbackSections(result: InvestigationResult) {
-    return result.agent_order.map((agentId) => {
-        const output = result.agents[agentId];
-        return {
-            id: `section-${agentId}`,
-            type: 'markdown' as const,
-            title: output?.display_name || agentId,
-            agent_id: agentId,
-            markdown: output?.markdown || '',
-        };
+/**
+ * Renders a primary agent's body. The threat hunter now emits an ordered
+ * `events` array; we render those, and immediately after each `splunk_search`
+ * event we render its matching artifact (matched by order — the Nth search
+ * event corresponds to the Nth search artifact, since the harness runs at most
+ * one search per turn). Falls back to markdown for legacy single-shot agents.
+ */
+const AgentBody: React.FC<{ events?: AgentEvent[]; markdown: string; artifacts: Artifact[] }> = ({
+    events,
+    markdown,
+    artifacts,
+}) => {
+    if (!events || events.length === 0) {
+        return (
+            <>
+                <MarkdownView content={markdown} />
+                {artifacts.map((artifact) => (
+                    <ArtifactRenderer key={artifact.id} artifact={artifact} />
+                ))}
+            </>
+        );
+    }
+
+    let searchIndex = 0;
+    const rendered = events.map((event, idx) => {
+        let artifact: Artifact | undefined;
+        if (event.type === 'splunk_search') {
+            artifact = artifacts[searchIndex];
+            searchIndex += 1;
+        }
+        return (
+            // eslint-disable-next-line react/no-array-index-key
+            <React.Fragment key={`event-${idx}`}>
+                <EventRenderer event={event} />
+                {artifact && <ArtifactRenderer artifact={artifact} />}
+            </React.Fragment>
+        );
     });
-}
+
+    // Any artifacts beyond those matched to a search event (defensive).
+    const leftover = artifacts.slice(searchIndex);
+    return (
+        <>
+            {rendered}
+            {leftover.map((artifact) => (
+                <ArtifactRenderer key={artifact.id} artifact={artifact} />
+            ))}
+        </>
+    );
+};
 
 const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) => {
     if (!result && !running) {
@@ -171,10 +210,11 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) 
                             <SectionTitle>{displayName}</SectionTitle>
                             <AgentStatusBadge status={output.status} />
                         </SectionHeader>
-                        <MarkdownView content={output.markdown} />
-                        {(artifactsByAgent.get(agentId) || []).map((artifact) => (
-                            <ArtifactRenderer key={artifact.id} artifact={artifact} />
-                        ))}
+                        <AgentBody
+                            events={output.events}
+                            markdown={output.markdown}
+                            artifacts={artifactsByAgent.get(agentId) || []}
+                        />
                     </Card>
                 );
             })}
