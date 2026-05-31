@@ -2,7 +2,7 @@
 
 import time
 import logging
-from .base import LLMProvider, Message, CompletionResponse
+from .base import LLMProvider, Message, CompletionResponse, ToolCall, ToolUseResponse
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,62 @@ class AnthropicProvider(LLMProvider):
             model=response.model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+        )
+
+    def complete_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        system: str | None = None,
+        model: str | None = None,
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
+    ) -> ToolUseResponse:
+        try:
+            import anthropic  # type: ignore
+        except ImportError:
+            raise RuntimeError("anthropic package not installed. Run: pip install anthropic")
+
+        client = anthropic.Anthropic(api_key=self.api_key)
+        target_model = model or self.model
+
+        kwargs: dict = {
+            "model": target_model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": messages,
+            "tools": tools,
+        }
+        if system:
+            kwargs["system"] = system
+
+        response = client.messages.create(**kwargs)
+
+        text_parts = []
+        tool_calls = []
+        raw_content = []
+
+        for block in response.content:
+            if block.type == "text":
+                text_parts.append(block.text)
+                raw_content.append({"type": "text", "text": block.text})
+            elif block.type == "tool_use":
+                tool_calls.append(ToolCall(id=block.id, name=block.name, input=block.input))
+                raw_content.append({
+                    "type": "tool_use",
+                    "id": block.id,
+                    "name": block.name,
+                    "input": block.input,
+                })
+
+        return ToolUseResponse(
+            content_text="\n".join(text_parts),
+            tool_calls=tool_calls,
+            stop_reason=response.stop_reason,
+            model=response.model,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            raw_content=raw_content,
         )
 
     def test_connection(self) -> dict:

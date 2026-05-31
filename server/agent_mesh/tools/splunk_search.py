@@ -82,6 +82,7 @@ def run_splunk_search_artifact(
     client_factory: Callable[[], SplunkClient | None],
     preferred_view: str | None = None,
     viz_hint: str | None = None,
+    timeout_seconds: float | None = None,
 ) -> dict:
     artifact_id = f"artifact-{uuid.uuid4().hex[:12]}"
     started_at = now_iso()
@@ -99,7 +100,10 @@ def run_splunk_search_artifact(
             preferred_view,
             viz_hint,
         )
-    result = client.run_search(spl, earliest=earliest, latest=latest)
+    kwargs: dict = {"earliest": earliest, "latest": latest}
+    if timeout_seconds is not None:
+        kwargs["timeout_seconds"] = timeout_seconds
+    result = client.run_search(spl, **kwargs)
     return _artifact(artifact_id, agent_id, title, spl, earliest, latest, result, started_at, preferred_view, viz_hint)
 
 

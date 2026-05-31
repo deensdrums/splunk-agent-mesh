@@ -17,3 +17,5 @@ class AgentConfig:
     output_format: str = "markdown"
     skills: list[str] = field(default_factory=list)
     depends_on: list[str] = field(default_factory=list)
+    agent_mode: str = "single_shot"
+    max_iterations: int = 10
