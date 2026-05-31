@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { variables } from '@splunk/themes';
+import Button from '@splunk/react-ui/Button';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import {
@@ -20,6 +21,7 @@ interface Props {
     descriptors: AgentDescriptor[];
     result: InvestigationResult | null;
     running: boolean;
+    onClear: () => void;
 }
 
 // Cards reveal one at a time (even when several events arrive in one response)
@@ -27,6 +29,11 @@ interface Props {
 const STAGGER_INTERVAL_MS = 300;
 // Treat the view as "stuck to bottom" if within this many px of the end.
 const STICK_THRESHOLD_PX = 40;
+// Leave a small gutter below the workbench so it does not sit flush against the
+// viewport edge. On short screens, keep enough height for a usable transcript
+// and allow the document to scroll naturally.
+const VIEWPORT_GUTTER_PX = 16;
+const MIN_WORKBENCH_HEIGHT_PX = 360;
 
 const fadeSlideIn = keyframes`
     from { opacity: 0; transform: translateY(8px); }
@@ -67,31 +74,47 @@ const HUNTER_TONE: Record<AgentRunStatus, Tone> = {
 
 // ---- Layout primitives ----
 
-const Container = styled.div`
+const Container = styled.div<{ $height: number }>`
     display: flex;
     flex-direction: column;
-    gap: ${variables.spacingMedium};
+    height: ${({ $height }) => `${$height}px`};
+    min-height: ${MIN_WORKBENCH_HEIGHT_PX}px;
 `;
 
-// Lightweight report heading — a divider, not a card.
-const ReportHead = styled.div`
+const Toolbar = styled.div`
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
+    flex-wrap: wrap;
     gap: ${variables.spacingMedium};
-    padding-bottom: ${variables.spacingSmall};
+    padding: 0 0 ${variables.spacingSmall};
     border-bottom: 1px solid ${variables.borderColor};
 `;
 
-const Title = styled.h2`
-    margin: 0;
-    font-size: ${variables.fontSizeXLarge};
+const ToolbarTitle = styled.div`
+    font-size: ${variables.fontSizeLarge};
+    font-weight: ${variables.fontWeightSemiBold};
     color: ${variables.contentColorActive};
 `;
 
-const Meta = styled.div`
+const ToolbarGroup = styled.div`
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: ${variables.spacingSmall};
+`;
+
+const ToolbarMeta = styled.div`
     color: ${variables.contentColorMuted};
     font-size: ${variables.fontSizeSmall};
+`;
+
+const AgentSection = styled.div`
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    padding-top: ${variables.spacingSmall};
 `;
 
 const AgentHead = styled.div`
@@ -107,20 +130,22 @@ const AgentName = styled.span`
     color: ${variables.contentColorActive};
 `;
 
-// Open, clearly bounded transcript: a restrained border (no filled surface) so
-// the colored event blocks read as floating cards, anchored by a status footer.
+// A console surface rather than an outer card: restrained separators define the
+// workspace while the colored event blocks carry the visual hierarchy.
 const TranscriptShell = styled.div`
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
-    border: 1px solid ${variables.borderColor};
-    border-radius: 6px;
+    min-height: 0;
+    border-top: 1px solid ${variables.borderColor};
+    border-bottom: 1px solid ${variables.borderColor};
     overflow: hidden;
-    background: transparent;
+    background: ${variables.backgroundColorPage};
 `;
 
 const ScrollArea = styled.div`
-    max-height: 70vh;
-    min-height: 180px;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
 
     /* Extra bottom padding keeps the newest auto-scrolled card clear of the
@@ -293,16 +318,16 @@ const AgentTranscript: React.FC<{
     }
 
     return (
-        <div>
+        <AgentSection>
             <AgentHead>
                 <AgentName>{agentName}</AgentName>
                 <AgentStatusBadge status={hunterStatus} />
             </AgentHead>
             <TranscriptShell>
-                <ScrollArea ref={scrollRef} onScroll={handleScroll}>
+                <ScrollArea data-testid="transcript-scroll" ref={scrollRef} onScroll={handleScroll}>
                     {body}
                 </ScrollArea>
-                <StatusBar>
+                <StatusBar data-testid="transcript-status">
                     {isActive && <WaitSpinner size="small" />}
                     <StatusGroup>
                         <StatusLabel>Investigation</StatusLabel>
@@ -326,11 +351,28 @@ const AgentTranscript: React.FC<{
                     {investigationId && <MonoId title={investigationId}>{investigationId}</MonoId>}
                 </StatusBar>
             </TranscriptShell>
-        </div>
+        </AgentSection>
     );
 };
 
-const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) => {
+const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, onClear }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [workbenchHeight, setWorkbenchHeight] = useState(MIN_WORKBENCH_HEIGHT_PX);
+
+    useEffect(() => {
+        const updateWorkbenchHeight = () => {
+            const top = containerRef.current?.getBoundingClientRect().top;
+            if (top === undefined) {
+                return;
+            }
+            setWorkbenchHeight(Math.max(MIN_WORKBENCH_HEIGHT_PX, window.innerHeight - top - VIEWPORT_GUTTER_PX));
+        };
+
+        updateWorkbenchHeight();
+        window.addEventListener('resize', updateWorkbenchHeight);
+        return () => window.removeEventListener('resize', updateWorkbenchHeight);
+    });
+
     if (!result && !running) {
         return (
             <Placeholder>
@@ -357,17 +399,26 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) 
         artifactsByAgent.set(artifact.agent_id, current.concat(artifact));
     });
 
-    const agentIds = result.agent_order.length > 0 ? result.agent_order : Object.keys(result.agents);
+    const configuredAgentId = descriptors[0]?.id;
+    let agentIds = result.agent_order;
+    if (agentIds.length === 0) {
+        const outputAgentIds = Object.keys(result.agents);
+        agentIds = outputAgentIds.length > 0 ? outputAgentIds : [configuredAgentId || 'spl_hunter'];
+    }
 
     return (
-        <Container>
-            <ReportHead>
-                <Title>Investigation Report</Title>
-                <Meta>
-                    {result.status}
-                    {result.owner ? ` · ${result.owner}` : ''}
-                </Meta>
-            </ReportHead>
+        <Container ref={containerRef} $height={workbenchHeight}>
+            <Toolbar>
+                <ToolbarGroup>
+                    <ToolbarTitle>Investigation Console</ToolbarTitle>
+                    <ToolbarMeta>
+                        {result.status}
+                        {result.owner ? ` · ${result.owner}` : ''}
+                        {result.id ? ` · ${result.id}` : ''}
+                    </ToolbarMeta>
+                </ToolbarGroup>
+                <Button label="Clear" appearance="subtle" onClick={onClear} />
+            </Toolbar>
 
             {result.error && (
                 <Message type="error" appearance="fill">
@@ -378,7 +429,9 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) 
             {agentIds.map((agentId) => {
                 const output = result.agents[agentId];
                 const descriptor = descriptors.find((d) => d.id === agentId);
-                const displayName = output?.display_name || descriptor?.display_name || agentId;
+                const displayName = output?.display_name
+                    || descriptor?.display_name
+                    || (agentId === 'spl_hunter' ? 'Threat Hunter' : agentId);
 
                 return (
                     <AgentTranscript

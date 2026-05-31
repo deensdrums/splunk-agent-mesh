@@ -18,6 +18,31 @@ const FormCard = styled.div`
     margin-bottom: ${variables.spacingMedium};
 `;
 
+const FormCardCollapsed = styled(FormCard)`
+    padding: ${variables.spacingSmall} ${variables.spacingMedium};
+`;
+
+const FormSummary = styled.div`
+    display: flex;
+    align-items: center;
+    gap: ${variables.spacingSmall} ${variables.spacingMedium};
+    flex-wrap: wrap;
+`;
+
+const FormSummaryText = styled.div`
+    flex: 1 1 320px;
+    min-width: 0;
+    color: ${variables.contentColorDefault};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+`;
+
+const FormSummaryMeta = styled.div`
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
+`;
+
 const FieldRow = styled.div`
     display: flex;
     gap: ${variables.spacingMedium};
@@ -71,6 +96,7 @@ const InvestigationPage: React.FC = () => {
     const [result, setResult] = useState<InvestigationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [descriptors, setDescriptors] = useState<AgentDescriptor[]>([]);
+    const [inputsExpanded, setInputsExpanded] = useState(true);
     const streamRef = useRef<{ close: () => void } | null>(null);
 
     useEffect(() => {
@@ -195,6 +221,7 @@ const InvestigationPage: React.FC = () => {
         setRunning(true);
         setError(null);
         setResult(null);
+        setInputsExpanded(false);
         streamRef.current?.close();
 
         try {
@@ -240,84 +267,108 @@ const InvestigationPage: React.FC = () => {
         }
     };
 
+    const clearInvestigation = () => {
+        setResult(null);
+        setError(null);
+        setInputsExpanded(true);
+    };
+
+    const summaryMeta = [
+        host && `Host ${host}`,
+        user && `User ${user}`,
+        alertName && `Alert ${alertName}`,
+        timeRange && `Range ${timeRange}`,
+    ].filter(Boolean).join(' · ');
+
     return (
         <div>
-            <FormCard>
-                <FieldGroup>
-                    <FieldLabel>Describe what to investigate</FieldLabel>
-                    <TextArea
-                        value={description}
-                        onChange={(_e: unknown, { value }: { value: string }) => setDescription(value)}
-                        rowsMin={3}
-                        rowsMax={6}
-                    />
-                </FieldGroup>
-                <FieldRow>
+            {inputsExpanded ? (
+                <FormCard>
                     <FieldGroup>
-                        <FieldLabel>Host</FieldLabel>
-                        <Text
-                            value={host}
-                            onChange={(_e: unknown, { value }: { value: string }) => setHost(value)}
-                            placeholder="FIN-LAPTOP-22"
+                        <FieldLabel>Describe what to investigate</FieldLabel>
+                        <TextArea
+                            value={description}
+                            onChange={(_e: unknown, { value }: { value: string }) => setDescription(value)}
+                            rowsMin={3}
+                            rowsMax={6}
                         />
                     </FieldGroup>
-                    <FieldGroup>
-                        <FieldLabel>User</FieldLabel>
-                        <Text
-                            value={user}
-                            onChange={(_e: unknown, { value }: { value: string }) => setUser(value)}
-                            placeholder="jsmith"
-                        />
-                    </FieldGroup>
-                    <FieldGroup>
-                        <FieldLabel>Alert Name</FieldLabel>
-                        <Text
-                            value={alertName}
-                            onChange={(_e: unknown, { value }: { value: string }) =>
-                                setAlertName(value)
-                            }
-                            placeholder="Office Spawns PowerShell"
-                        />
-                    </FieldGroup>
-                    <FieldGroup>
-                        <FieldLabel>Time Range</FieldLabel>
-                        <Text
-                            value={timeRange}
-                            onChange={(_e: unknown, { value }: { value: string }) =>
-                                setTimeRange(value)
-                            }
-                            placeholder="-24h"
-                        />
-                    </FieldGroup>
-                </FieldRow>
-                <ButtonRow>
-                    <Button
-                        label="Start Investigation"
-                        appearance="primary"
-                        disabled={running || !description.trim()}
-                        onClick={() => runInvestigation(false)}
-                    />
-                    <Button
-                        label="Load Suspicious PowerShell Demo"
-                        appearance="secondary"
-                        disabled={running}
-                        onClick={() => {
-                            loadDemoForm();
-                            setTimeout(() => runInvestigation(true, DEMO_FORM), 50);
-                        }}
-                    />
-                    {result && (
+                    <FieldRow>
+                        <FieldGroup>
+                            <FieldLabel>Host</FieldLabel>
+                            <Text
+                                value={host}
+                                onChange={(_e: unknown, { value }: { value: string }) => setHost(value)}
+                                placeholder="FIN-LAPTOP-22"
+                            />
+                        </FieldGroup>
+                        <FieldGroup>
+                            <FieldLabel>User</FieldLabel>
+                            <Text
+                                value={user}
+                                onChange={(_e: unknown, { value }: { value: string }) => setUser(value)}
+                                placeholder="jsmith"
+                            />
+                        </FieldGroup>
+                        <FieldGroup>
+                            <FieldLabel>Alert Name</FieldLabel>
+                            <Text
+                                value={alertName}
+                                onChange={(_e: unknown, { value }: { value: string }) =>
+                                    setAlertName(value)
+                                }
+                                placeholder="Office Spawns PowerShell"
+                            />
+                        </FieldGroup>
+                        <FieldGroup>
+                            <FieldLabel>Time Range</FieldLabel>
+                            <Text
+                                value={timeRange}
+                                onChange={(_e: unknown, { value }: { value: string }) =>
+                                    setTimeRange(value)
+                                }
+                                placeholder="-24h"
+                            />
+                        </FieldGroup>
+                    </FieldRow>
+                    <ButtonRow>
                         <Button
-                            label="Clear"
+                            label="Start Investigation"
+                            appearance="primary"
+                            disabled={running || !description.trim()}
+                            onClick={() => runInvestigation(false)}
+                        />
+                        <Button
+                            label="Load Suspicious PowerShell Demo"
                             appearance="secondary"
+                            disabled={running}
                             onClick={() => {
-                                setResult(null);
-                                setError(null);
+                                loadDemoForm();
+                                setTimeout(() => runInvestigation(true, DEMO_FORM), 50);
                             }}
                         />
-                    )}
-                </ButtonRow>
-            </FormCard>
+                        {(result || running) && (
+                            <Button
+                                label="Hide Inputs"
+                                appearance="subtle"
+                                onClick={() => setInputsExpanded(false)}
+                            />
+                        )}
+                    </ButtonRow>
+                </FormCard>
+            ) : (
+                <FormCardCollapsed>
+                    <FormSummary>
+                        <FormSummaryText title={description}>{description || 'Investigation inputs'}</FormSummaryText>
+                        {summaryMeta && <FormSummaryMeta>{summaryMeta}</FormSummaryMeta>}
+                        <Button
+                            label="Edit Inputs"
+                            appearance="subtle"
+                            onClick={() => setInputsExpanded(true)}
+                        />
+                    </FormSummary>
+                </FormCardCollapsed>
+            )}
 
             {error && (
                 <SectionGap>
@@ -327,7 +378,12 @@ const InvestigationPage: React.FC = () => {
                 </SectionGap>
             )}
 
-            <InvestigationReport descriptors={descriptors} result={result} running={running} />
+            <InvestigationReport
+                descriptors={descriptors}
+                result={result}
+                running={running}
+                onClear={clearInvestigation}
+            />
         </div>
     );
 };
