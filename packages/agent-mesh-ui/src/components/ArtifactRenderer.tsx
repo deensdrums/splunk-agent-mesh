@@ -104,6 +104,20 @@ const SingleValue = styled.div`
     margin: ${variables.spacingMedium} 0;
 `;
 
+const SearchState = styled.div<{ $status: SearchArtifact['status'] }>`
+    display: flex;
+    align-items: center;
+    gap: ${variables.spacingSmall};
+    padding: ${variables.spacingSmall};
+    margin-bottom: ${variables.spacingSmall};
+    border-left: 3px solid ${({ $status }) =>
+        $status === 'done' ? variables.statusColorLow : variables.statusColorInfo};
+    background: ${variables.backgroundColorSidebar};
+    color: ${variables.contentColorDefault};
+    font-size: ${variables.fontSizeSmall};
+    font-weight: ${variables.fontWeightSemiBold};
+`;
+
 const RowsTable: React.FC<{ fields: string[]; rows: Record<string, unknown>[] }> = ({ fields, rows }) => (
     <DataTable>
         <thead>
@@ -251,15 +265,24 @@ const SearchArtifactBody: React.FC<{ artifact: SearchArtifact; includeSpl: boole
 
     return (
         <>
+            {artifact.status === 'pending' && (
+                <SearchState $status={artifact.status}>
+                    <WaitSpinner size="small" /> Dispatching search…
+                </SearchState>
+            )}
             {artifact.status === 'running' && (
-                <Message type="info">
-                    <WaitSpinner size="small" /> Search is still running.
-                </Message>
+                <SearchState $status={artifact.status}>
+                    <WaitSpinner size="small" /> Search running. Preview results update automatically.
+                </SearchState>
+            )}
+            {artifact.status === 'done' && (
+                <SearchState $status={artifact.status}>Search complete. Showing final results.</SearchState>
             )}
             {artifact.status === 'error' && (
                 <Message type="error">{artifact.error || 'Search failed.'}</Message>
             )}
-            {artifact.status === 'done' && renderViz(artifact, fields, previewRows)}
+            {(artifact.status === 'done' || (artifact.status === 'running' && previewRows.length > 0))
+                && renderViz(artifact, fields, previewRows)}
             {includeSpl && (
                 <SplBlock>
                     <code>{artifact.spl}</code>

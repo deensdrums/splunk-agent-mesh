@@ -176,6 +176,21 @@ describe('InvestigationReport console', () => {
         expect(within(scrollArea).getByText('timechart · done · SID test-sid')).toBeInTheDocument();
     });
 
+    test('renders preview chart with a running indicator before search completion', () => {
+        const result = resultWithEvents([SEARCH_EVENT]);
+        result.artifacts = [{ ...SEARCH_ARTIFACT, status: 'running', _revision: 2 }];
+
+        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        const scrollArea = screen.getByTestId('transcript-scroll');
+        expect(within(scrollArea).getByText('Search running. Preview results update automatically.')).toBeInTheDocument();
+        expect(within(scrollArea).getByText('Column')).toBeInTheDocument();
+        expect(within(scrollArea).queryByText('Search complete. Showing final results.')).not.toBeInTheDocument();
+    });
+
     test('shows thinking while active and hides it after the final event is revealed', () => {
         const { rerender } = render(
             <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />

@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import InvestigationPage from '../pages/InvestigationPage';
+import InvestigationPage, { upsertArtifacts } from '../pages/InvestigationPage';
 
 jest.mock('@splunk/themes', () => ({
     variables: new Proxy({}, { get: () => '0px' }),
@@ -54,4 +54,11 @@ test('collapses inputs when a run starts and expands them when the console is cl
     await waitFor(() => expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.getByText('Describe what to investigate')).toBeInTheDocument();
+});
+
+test('replaces streamed artifact revisions without duplicating the search card', () => {
+    const running = { id: 'artifact-1', status: 'running', _revision: 1 } as any;
+    const done = { id: 'artifact-1', status: 'done', _revision: 2 } as any;
+
+    expect(upsertArtifacts([running], [done])).toEqual([done]);
 });

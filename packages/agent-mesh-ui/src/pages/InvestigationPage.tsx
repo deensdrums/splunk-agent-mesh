@@ -5,7 +5,7 @@ import Button from '@splunk/react-ui/Button';
 import TextArea from '@splunk/react-ui/TextArea';
 import Text from '@splunk/react-ui/Text';
 import Message from '@splunk/react-ui/Message';
-import { AgentDescriptor, InvestigationRequest, InvestigationResult } from '../types';
+import { AgentDescriptor, Artifact, InvestigationRequest, InvestigationResult } from '../types';
 import InvestigationReport from '../components/InvestigationReport';
 import { apiClient, createInvestigationStream } from '../services/apiClient';
 import { DEMO_RESULT } from '../demo/demoData';
@@ -86,6 +86,12 @@ const DEMO_FORM: InvestigationRequest = {
     demo: true,
 };
 
+export function upsertArtifacts(current: Artifact[], updates: Artifact[]): Artifact[] {
+    const byId = new Map(current.map((artifact) => [artifact.id, artifact]));
+    updates.forEach((artifact) => byId.set(artifact.id, artifact));
+    return Array.from(byId.values());
+}
+
 const InvestigationPage: React.FC = () => {
     const [description, setDescription] = useState('');
     const [host, setHost] = useState('');
@@ -155,12 +161,10 @@ const InvestigationPage: React.FC = () => {
                     onAgentComplete: (agentId, output, artifacts) => {
                         setResult((prev) => {
                             if (!prev) {return prev;}
-                            const existingIds = new Set((prev.artifacts || []).map((a) => a.id));
-                            const newArtifacts = artifacts.filter((a) => !existingIds.has(a.id));
                             return {
                                 ...prev,
                                 agents: { ...prev.agents, [agentId]: output },
-                                artifacts: [...(prev.artifacts || []), ...newArtifacts],
+                                artifacts: upsertArtifacts(prev.artifacts || [], artifacts),
                             };
                         });
                         setDescriptors((prev) => {
@@ -176,12 +180,10 @@ const InvestigationPage: React.FC = () => {
                     onAgentUpdate: (agentId, output, artifacts) => {
                         setResult((prev) => {
                             if (!prev) {return prev;}
-                            const existingIds = new Set((prev.artifacts || []).map((a) => a.id));
-                            const newArtifacts = artifacts.filter((a) => !existingIds.has(a.id));
                             return {
                                 ...prev,
                                 agents: { ...prev.agents, [agentId]: output },
-                                artifacts: [...(prev.artifacts || []), ...newArtifacts],
+                                artifacts: upsertArtifacts(prev.artifacts || [], artifacts),
                             };
                         });
                     },

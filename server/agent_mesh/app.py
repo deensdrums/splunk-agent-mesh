@@ -265,7 +265,7 @@ def get_investigation(investigation_id: str, http_request: Request):
 
 async def _stream_events(investigation_id: str):
     seen_agent_iters: dict[str, int] = {}
-    seen_artifact_ids: set[str] = set()
+    seen_artifact_revisions: dict[str, int] = {}
     order_sent = False
     polls_with_no_job = 0
 
@@ -287,19 +287,22 @@ async def _stream_events(investigation_id: str):
         for agent_id, output in job.get("agents", {}).items():
             current_iter = output.get("_iteration", 0)
             last_iter = seen_agent_iters.get(agent_id, -1)
+            agent_artifacts = [a for a in job.get("artifacts", []) if a.get("agent_id") == agent_id]
+            changed_artifacts = [
+                a for a in agent_artifacts
+                if a.get("_revision", 0) > seen_artifact_revisions.get(a.get("id"), -1)
+            ]
 
-            if current_iter > last_iter:
+            if current_iter > last_iter or changed_artifacts:
                 seen_agent_iters[agent_id] = current_iter
-                agent_artifacts = [a for a in job.get("artifacts", []) if a.get("agent_id") == agent_id]
-                new_artifacts = [a for a in agent_artifacts if a.get("id") not in seen_artifact_ids]
-                for a in new_artifacts:
-                    seen_artifact_ids.add(a["id"])
+                for artifact in changed_artifacts:
+                    seen_artifact_revisions[artifact["id"]] = artifact.get("_revision", 0)
                 is_final = output.get("status") not in ("running", "iterating")
                 yield _sse_event({
                     "type": "agent_complete" if is_final else "agent_update",
                     "agent_id": agent_id,
                     "output": output,
-                    "artifacts": new_artifacts,
+                    "artifacts": changed_artifacts,
                 })
 
         if job["status"] not in ("running", "pending"):

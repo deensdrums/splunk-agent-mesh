@@ -6,6 +6,7 @@ In demo/MVP mode, returns synthetic event data instead of calling Splunk.
 import logging
 from dataclasses import dataclass, field
 from time import monotonic, sleep
+from typing import Callable
 
 import httpx
 
@@ -42,8 +43,38 @@ class SplunkClient:
         latest: str = "now",
         timeout_seconds: float = 8.0,
         max_rows: int = 100,
+        on_update: Callable[[SearchResult], None] | None = None,
     ) -> SearchResult:
-        """Create a Splunk search job, poll briefly, and return normalized rows."""
+        """Create a Splunk search job and stream preview rows while polling."""
+        dispatched = self.dispatch_search(spl, earliest, latest)
+        if dispatched.status == "error" or not dispatched.sid:
+            return dispatched
+        if on_update:
+            on_update(dispatched)
+
+        last_preview: SearchResult | None = None
+        deadline = monotonic() + timeout_seconds
+        while monotonic() < deadline:
+            status = self.get_search_status(dispatched.sid, spl)
+            if status.status == "error":
+                if on_update:
+                    on_update(status)
+                return status
+            if status.status == "done":
+                result = self.get_results(dispatched.sid, spl, max_rows)
+                if on_update:
+                    on_update(result)
+                return result
+
+            preview = self.get_preview_results(dispatched.sid, spl, max_rows)
+            if on_update and preview != last_preview:
+                on_update(preview)
+                last_preview = preview
+            sleep(0.5)
+        return last_preview or dispatched
+
+    def dispatch_search(self, spl: str, earliest: str = "-24h", latest: str = "now") -> SearchResult:
+        """Create a Splunk search job with preview generation enabled."""
         search = spl if spl.strip().lower().startswith("search ") else f"search {spl}"
         try:
             create = httpx.post(
@@ -52,6 +83,7 @@ class SplunkClient:
                     "search": search,
                     "earliest_time": earliest,
                     "latest_time": latest,
+                    "status_buckets": "300",
                     "output_mode": "json",
                 },
                 headers=self._headers(),
@@ -62,30 +94,47 @@ class SplunkClient:
             sid = create.json().get("sid")
             if not sid:
                 return SearchResult(spl=spl, status="error", error="Splunk did not return a search id.")
-
-            deadline = monotonic() + timeout_seconds
-            while monotonic() < deadline:
-                job = httpx.get(
-                    self._url(f"/services/search/jobs/{sid}"),
-                    params={"output_mode": "json"},
-                    headers=self._headers(),
-                    verify=self.verify_ssl,
-                    timeout=10.0,
-                )
-                job.raise_for_status()
-                content = (job.json().get("entry") or [{}])[0].get("content", {})
-                if content.get("isDone"):
-                    return self.get_results(sid, spl, max_rows)
-                sleep(0.5)
             return SearchResult(spl=spl, sid=sid, status="running")
         except httpx.HTTPError as exc:
             logger.exception("Splunk search failed.")
             return SearchResult(spl=spl, status="error", error=str(exc))
 
+    def get_search_status(self, sid: str, spl: str) -> SearchResult:
+        try:
+            job = httpx.get(
+                self._url(f"/services/search/jobs/{sid}"),
+                params={"output_mode": "json"},
+                headers=self._headers(),
+                verify=self.verify_ssl,
+                timeout=10.0,
+            )
+            job.raise_for_status()
+            content = (job.json().get("entry") or [{}])[0].get("content", {})
+            dispatch_state = content.get("dispatchState")
+            if content.get("isDone") or dispatch_state == "DONE":
+                return SearchResult(spl=spl, sid=sid, status="done")
+            if dispatch_state in {"FAILED", "INTERNAL_CANCEL", "USER_CANCEL", "BAD_INPUT_CANCEL", "QUIT"}:
+                return SearchResult(spl=spl, sid=sid, status="error", error=f"Splunk search ended: {dispatch_state}")
+            return SearchResult(spl=spl, sid=sid, status="running")
+        except httpx.HTTPError as exc:
+            logger.exception("Splunk search status fetch failed.")
+            return SearchResult(spl=spl, sid=sid, status="error", error=str(exc))
+
+    def get_preview_results(self, sid: str, spl: str, max_rows: int = 100) -> SearchResult:
+        """Return transformed preview rows for an in-flight search."""
+        return self._get_results(
+            f"/services/search/v2/jobs/{sid}/results_preview", sid, spl, "running", max_rows, tolerate_errors=True,
+        )
+
     def get_results(self, sid: str, spl: str, max_rows: int = 100) -> SearchResult:
+        return self._get_results(f"/services/search/v2/jobs/{sid}/results", sid, spl, "done", max_rows)
+
+    def _get_results(
+        self, path: str, sid: str, spl: str, status: str, max_rows: int, tolerate_errors: bool = False,
+    ) -> SearchResult:
         try:
             resp = httpx.get(
-                self._url(f"/services/search/jobs/{sid}/results"),
+                self._url(path),
                 params={"output_mode": "json", "count": str(max_rows)},
                 headers=self._headers(),
                 verify=self.verify_ssl,
@@ -106,9 +155,11 @@ class SplunkClient:
                 f"{m.get('type', 'INFO')}: {m.get('text', '')}".strip()
                 for m in payload.get("messages", [])
             ]
-            return SearchResult(spl=spl, sid=sid, status="done", fields=fields, events=rows, messages=messages)
+            return SearchResult(spl=spl, sid=sid, status=status, fields=fields, events=rows, messages=messages)
         except httpx.HTTPError as exc:
             logger.exception("Splunk results fetch failed.")
+            if tolerate_errors:
+                return SearchResult(spl=spl, sid=sid, status="running")
             return SearchResult(spl=spl, sid=sid, status="error", error=str(exc))
 
     def cancel_search(self, sid: str) -> bool:
@@ -132,7 +183,14 @@ class DemoSplunkClient(SplunkClient):
     def __init__(self):
         super().__init__(host="demo", token="demo")
 
-    def run_search(self, spl: str, earliest: str = "-24h", latest: str = "now") -> SearchResult:
+    def run_search(
+        self,
+        spl: str,
+        earliest: str = "-24h",
+        latest: str = "now",
+        on_update: Callable[[SearchResult], None] | None = None,
+        **_kwargs,
+    ) -> SearchResult:
         from .demo.synthetic_events import get_demo_events_for_spl
         events = get_demo_events_for_spl(spl)
         logger.info("DemoSplunkClient returned %d events for query.", len(events))
@@ -141,4 +199,7 @@ class DemoSplunkClient(SplunkClient):
             for key in row.keys():
                 if key not in fields:
                     fields.append(key)
-        return SearchResult(spl=spl, sid="demo", status="done", fields=fields, events=events)
+        result = SearchResult(spl=spl, sid="demo", status="done", fields=fields, events=events)
+        if on_update:
+            on_update(result)
+        return result
