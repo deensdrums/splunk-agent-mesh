@@ -24,7 +24,7 @@ const EventCard = styled.div<{ accent: string }>`
     border-left: 3px solid ${({ accent }) => accent};
     background: ${variables.backgroundColorNavigation};
     padding: ${variables.spacingSmall} ${variables.spacingMedium};
-    margin-bottom: ${variables.spacingSmall};
+    margin-bottom: ${variables.spacingMedium};
 `;
 
 const EventHead = styled.div`
