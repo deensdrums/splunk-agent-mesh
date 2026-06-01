@@ -118,7 +118,7 @@ describe('InvestigationReport console', () => {
         render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={onClear} />);
 
         act(() => {
-            jest.advanceTimersByTime(300);
+            jest.advanceTimersByTime(330);
         });
 
         expect(screen.getByTestId('transcript-status')).toHaveTextContent('Events1/1');
@@ -138,7 +138,7 @@ describe('InvestigationReport console', () => {
         });
 
         act(() => {
-            jest.advanceTimersByTime(300);
+            jest.advanceTimersByTime(330);
         });
         expect(scrollArea.scrollTop).toBe(1000);
 
@@ -153,7 +153,7 @@ describe('InvestigationReport console', () => {
             />
         );
         act(() => {
-            jest.advanceTimersByTime(300);
+            jest.advanceTimersByTime(330);
         });
 
         expect(scrollArea.scrollTop).toBe(100);
@@ -166,7 +166,7 @@ describe('InvestigationReport console', () => {
 
         render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
         act(() => {
-            jest.advanceTimersByTime(300);
+            jest.advanceTimersByTime(330);
         });
 
         const scrollArea = screen.getByTestId('transcript-scroll');
@@ -181,7 +181,7 @@ describe('InvestigationReport console', () => {
             <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />
         );
         act(() => {
-            jest.advanceTimersByTime(300);
+            jest.advanceTimersByTime(330);
         });
         expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Thinking');
 
@@ -194,7 +194,7 @@ describe('InvestigationReport console', () => {
             />
         );
         act(() => {
-            jest.advanceTimersByTime(300);
+            jest.advanceTimersByTime(330);
         });
         expect(screen.queryByTestId('thinking-indicator')).not.toBeInTheDocument();
     });

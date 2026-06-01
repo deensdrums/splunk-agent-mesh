@@ -26,7 +26,7 @@ interface Props {
 
 // Cards reveal one at a time (even when several events arrive in one response)
 // and fade/slide in as they paint.
-const STAGGER_INTERVAL_MS = 300;
+const STAGGER_INTERVAL_MS = 330;
 // Treat the view as "stuck to bottom" if within this many px of the end.
 const STICK_THRESHOLD_PX = 40;
 // Leave a small gutter below the workbench so it does not sit flush against the
@@ -165,7 +165,7 @@ const ScrollArea = styled.div`
 `;
 
 const RevealItem = styled.div`
-    animation: ${fadeSlideIn} 150ms ease-out;
+    animation: ${fadeSlideIn} 165ms ease-out;
 `;
 
 const ThinkingIndicator = styled.div`
