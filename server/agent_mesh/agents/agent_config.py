@@ -16,7 +16,6 @@ class AgentConfig:
     enabled: bool = True
     output_format: str = "markdown"
     skills: list[str] = field(default_factory=list)
-    depends_on: list[str] = field(default_factory=list)
     agent_mode: str = "single_shot"
     max_iterations: int = 10
     # "primary" agents are user-visible top-level agents in the mesh.

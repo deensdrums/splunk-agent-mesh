@@ -85,7 +85,6 @@ def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig |
         enabled=_coerce_bool(merged.get("enabled"), True),
         output_format=merged.get("output_format", "markdown"),
         skills=_coerce_list(merged.get("skills")),
-        depends_on=_coerce_list(merged.get("depends_on")),
         agent_mode=agent_mode,
         max_iterations=_coerce_int(merged.get("max_iterations"), 10),
         agent_role=agent_role,
