@@ -17,11 +17,13 @@ import MarkdownView from './MarkdownView';
 interface Props {
     event: AgentEvent;
     artifact?: Artifact;
+    isCurrent?: boolean;
 }
 
-const EventCard = styled.div<{ accent: string }>`
+const EventCard = styled.div<{ accent: string; $isCurrent: boolean }>`
     border-left: 3px solid ${({ accent }) => accent};
-    background: ${variables.backgroundColorNavigation};
+    background: ${({ $isCurrent }) =>
+        $isCurrent ? variables.backgroundColorSidebar : variables.backgroundColorNavigation};
     box-shadow: 3px 4px 8px rgba(0, 0, 0, 0.18);
     padding: ${variables.spacingSmall} ${variables.spacingMedium};
     margin-bottom: ${variables.spacingMedium};
@@ -124,12 +126,12 @@ const PayloadFields: React.FC<{ payload: Record<string, unknown>; skip?: string[
     );
 };
 
-const EventRenderer: React.FC<Props> = ({ event, artifact }) => {
+const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false }) => {
     const accent = TYPE_ACCENTS[event.type];
     const payload = event.payload || {};
 
     return (
-        <EventCard accent={accent}>
+        <EventCard accent={accent} $isCurrent={isCurrent}>
             <EventHead>
                 <TypeTag accent={accent}>{TYPE_LABELS[event.type] || event.type}</TypeTag>
                 <EventTitle>{event.title}</EventTitle>

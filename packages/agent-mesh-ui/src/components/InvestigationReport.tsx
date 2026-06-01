@@ -299,7 +299,7 @@ const AgentTranscript: React.FC<{
             return (
                 // eslint-disable-next-line react/no-array-index-key
                 <RevealItem key={`event-${idx}`}>
-                    <EventRenderer event={event} artifact={artifact} />
+                    <EventRenderer event={event} artifact={artifact} isCurrent={idx === visible.length - 1} />
                 </RevealItem>
             );
         });
