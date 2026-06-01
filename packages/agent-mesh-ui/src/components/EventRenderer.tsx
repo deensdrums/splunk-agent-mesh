@@ -20,7 +20,6 @@ interface Props {
 }
 
 const EventCard = styled.div<{ accent: string }>`
-    border: 1px solid ${variables.borderColor};
     border-left: 3px solid ${({ accent }) => accent};
     background: ${variables.backgroundColorNavigation};
     padding: ${variables.spacingSmall} ${variables.spacingMedium};
