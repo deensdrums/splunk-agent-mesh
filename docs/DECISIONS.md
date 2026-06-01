@@ -1,219 +1,265 @@
 # Splunk Agent Mesh — Architecture Decisions
 
+ADRs are an append-only record. Earlier decisions are preserved even when later
+ones supersede them; the `Status` line points to the superseding ADR. For the
+narrative of how the architecture evolved, see `docs/legacy/HISTORY.md`.
+
 ---
 
 ## ADR-001: Backend as FastAPI Service (not Splunk REST Handler)
 
-**Date**: 2026-05-18  
-**Status**: Accepted
+**Date**: 2026-05-18 · **Status**: Accepted (amended by ADR-014)
 
-**Context**: The Splunk Create scaffold provides a React app with a Splunk app wrapper. A backend is needed to run agent orchestration and LLM calls. Options are:
-1. Splunk Custom REST Handler (Python, runs inside Splunk process)
-2. Standalone FastAPI service (Python, runs outside Splunk)
-3. No backend — pure frontend with direct LLM calls
+A backend is needed for orchestration and LLM calls. Options: a Splunk Custom
+REST Handler (runs in-process, awkward dependency management), a standalone
+FastAPI service (fast iteration, full async), or frontend-only LLM calls (leaks
+API keys — non-starter).
 
-**Options Considered**:
-- **Splunk REST Handler**: Pro: fully integrated, deploys with app. Con: Python environment is managed by Splunk, harder to install dependencies (anthropic SDK etc.), slower iteration, no async support in older Splunk Pythons.
-- **FastAPI standalone**: Pro: fast development, full async, easy dependency management, easy local testing. Con: requires separate deployment step; not automatically part of Splunk app bundle.
-- **Frontend-only LLM calls**: Pro: simplest. Con: API keys would be exposed to browser. Hard non-starter per security requirements.
-
-**Chosen Approach**: FastAPI standalone service (`server/agent_mesh/`). For Splunk production packaging, the same Python logic will be wrapped in a Splunk Custom REST Handler in a future session.
-
-**Consequences**:
-- Local dev requires running `uvicorn agent_mesh.app:app --port 8765` separately.
-- The Splunk app React code calls `http://localhost:8765` (configurable via `window.__AGENT_MESH_API_URL__`) in dev, and will call the Splunk REST proxy in production.
-- Backend dependencies go in `server/requirements.txt`, not in the Splunk app.
+**Chosen**: standalone FastAPI service (`server/agent_mesh/`). Local dev runs
+`uvicorn agent_mesh.app:app --port 8765`. ADR-014 later added a Splunk REST
+**bridge** in front of it so Splunk Web traffic is authenticated and proxied
+rather than hitting uvicorn directly.
 
 ---
 
 ## ADR-002: Single-Page Tab Navigation (not React Router)
 
-**Date**: 2026-05-18  
-**Status**: Accepted
+**Date**: 2026-05-18 · **Status**: Accepted
 
-**Context**: The app needs three views: Investigation, Settings, About. React Router is the standard choice for SPAs, but Splunk Web has its own URL management and the app runs inside an iframe-like context where hash routing can behave unexpectedly.
-
-**Options Considered**:
-- **React Router (HashRouter)**: Works in Splunk, but adds dependency complexity and may conflict with Splunk's own URL manipulation.
-- **React Router (BrowserRouter)**: Requires server-side routing support — not available in this Splunk app context.
-- **Tab-based navigation with useState**: Simple, zero dependencies, no URL complexity, works perfectly inside Splunk Web.
-- **Multiple Splunk views**: Each page is a separate Splunk view (separate webpack bundle). More "Splunk native" but requires more wiring, HTML templates, and XML view files.
-
-**Chosen Approach**: Tab-based navigation via `useState` in the root `Investigations` component. Single webpack bundle. Navigation bar implemented with `@splunk/react-ui` Tab components.
-
-**Consequences**:
-- No URL-based deep linking to Settings or About in MVP.
-- Simpler build: single webpack entry point.
-- Can be upgraded to multiple Splunk views later by extracting each tab into a separate page directory.
+Three views (Investigation / Settings / About). React Router conflicts with
+Splunk Web's URL management. **Chosen**: tab navigation via `useState` in the
+root `Investigations` component; single webpack bundle. Trade-off: no URL deep
+linking; upgradable to multiple Splunk views later.
 
 ---
 
 ## ADR-003: SettingsStore Abstraction with DevMode Guard
 
-**Date**: 2026-05-18  
-**Status**: Accepted
+**Date**: 2026-05-18 · **Status**: Accepted
 
-**Context**: API keys must never be stored in plaintext in the repo or in browser storage. The Splunk Passwords API is the right long-term solution but requires a running Splunk instance with the app installed. During development, some fallback is needed.
-
-**Chosen Approach**: Abstract `SettingsStore` with two implementations:
-1. `SplunkSecureSettingsStore` — production, uses Splunk Passwords API
-2. `DevSettingsStore` — local dev, reads from `AGENT_MESH_API_KEY` env var. Refuses to store plaintext to disk unless `AGENT_MESH_DEV_MODE=1` is explicitly set.
-
-**Consequences**:
-- Developers must set `AGENT_MESH_API_KEY` env var locally (not commit it).
-- No accidental plaintext key storage.
-- Clear upgrade path to production.
+API keys must never be plaintext in the repo or browser. **Chosen**: abstract
+`SettingsStore` with `SplunkSecureSettingsStore` (Passwords API, production) and
+`DevSettingsStore` (reads `AGENT_MESH_API_KEY`; refuses plaintext-to-disk unless
+`AGENT_MESH_DEV_MODE=1`). The Splunk store remains stubbed in the current
+deployment.
 
 ---
 
 ## ADR-004: Deterministic Demo Mode
 
-**Date**: 2026-05-18  
-**Status**: Accepted
+**Date**: 2026-05-18 · **Status**: Accepted (shape updated by ADR-013)
 
-**Context**: For the hackathon demo, a live Splunk instance and live LLM API may not be available or reliable. A deterministic demo ensures the demo always works.
-
-**Chosen Approach**: `POST /api/v1/investigations/run` accepts a `demo: true` flag. When set, the orchestrator returns the static `demo_case.py` result immediately without any agent invocations, Splunk calls, or LLM calls. The frontend "Load Demo" button sets this flag.
-
-**Consequences**:
-- Demo is always reliable.
-- No API key needed for demo.
-- Clear separation: demo mode vs. real mode.
+`demo: true` returns a static result with no LLM/Splunk calls so the demo is
+always reliable. ADR-013 changed the demo payload from per-agent markdown to a
+canned Threat Hunter **event stream** + one artifact, to mirror the live wire
+shape.
 
 ---
 
 ## ADR-005: React Component Library in Separate Package
 
-**Date**: 2026-05-18 (pre-existing scaffold decision)  
-**Status**: Accepted (inherited)
+**Date**: 2026-05-18 · **Status**: Accepted (inherited)
 
-**Context**: The Splunk Create scaffold created two packages: `@splunk/agent-mesh-ui` (component library) and `@splunk/agent-mesh` (Splunk app). All React UI logic lives in the UI library. The Splunk app imports from it.
-
-**Consequences**:
-- UI changes go in `packages/agent-mesh-ui/src/`.
-- Splunk app pages (`packages/agent-mesh/src/main/webapp/pages/`) are thin entry points only.
-- This is a clean separation that allows the component library to be tested standalone (via `start:demo`).
+The scaffold split `@splunk/agent-mesh-ui` (components) and `@splunk/agent-mesh`
+(Splunk app). All UI logic lives in the library; the app is a thin entry point.
 
 ---
 
 ## ADR-006: Agents as Configuration, not Code
 
-**Date**: 2026-05-21
-**Status**: Accepted
+**Date**: 2026-05-21 · **Status**: Accepted
 
-**Context**: The original 7 agents were each implemented as a Python class with hardcoded prompts, MITRE maps, SPL templates, and severity heuristics. Adding a new agent meant writing a new file. Tuning a prompt meant a code change. The product is meant to be a *platform* — adding or tuning agents must not require code edits.
-
-**Options Considered**:
-- **Keep agent classes, externalize prompts only**: Cheap, but still hardcodes the agent set in Python. Adding an agent stays code-heavy.
-- **YAML/JSON config files**: Easy to parse, but foreign to Splunk admins.
-- **`agents.conf` (Splunk conf format)**: Native to Splunk operators, supports `[default]` inheritance, integrates with the Splunk REST configs API and `local/` override conventions, can be bundled with the app and edited via Splunk Web.
-
-**Chosen Approach**: One generic `LLMAgent` class. Each agent is fully described by an `[agent:<id>]` stanza in `default/agents.conf`: display name, description, system prompt, model, temperature, order. The backend reads the conf via the Splunk REST API in production (`SplunkRestConfReader`) and falls back to direct file parsing for unit tests and dev (`FileConfReader`).
-
-**Consequences**:
-- Adding an agent = adding a stanza. No backend redeploy needed.
-- Tuning a prompt = editing a value. Reloadable via Splunk's standard conf reload.
-- The Python code knows nothing about specific SOC concepts (MITRE, SPL, triage) — those live in the prompts.
-- Reserved future fields (`skills`, `output_format=json|mixed`) leave room without re-opening the contract.
+The original seven agents were Python classes with hardcoded prompts. To make
+the product a platform, agents became `[agent:<id>]` stanzas read from
+`agents.conf` (native to Splunk admins, REST-readable, `local/`-overridable).
+Adding/tuning an agent is a conf edit, not a code change. This decision still
+holds — the agentic refactor changed an agent's *output contract*, not the
+config-driven model.
 
 ---
 
 ## ADR-007: Agents Are Independent in v1
 
-**Date**: 2026-05-21
-**Status**: Accepted
+**Date**: 2026-05-21 · **Status**: Superseded by ADR-009, then by ADR-013
 
-**Context**: A natural design for multi-agent systems chains agents together — each one reads prior outputs and refines them. That creates coupling: one agent's output schema becomes another's input contract; a prompt change in agent N can break agent N+1.
-
-**Chosen Approach**: In v1, each agent receives only the original user request. Agents do not see each other's outputs. The orchestrator collects all per-agent markdown into a flat `agents: Record<string, AgentOutput>` and the UI displays each in its own tab. The user is the integrator.
-
-**Consequences**:
-- Agents are trivially parallelizable (deferred — sequential is fine for v1).
-- Tuning one agent never breaks another.
-- No emergent reasoning across agents — that's a deliberate v1 limitation.
-- A future ADR can add explicit `depends_on = ` if cross-agent context becomes desirable; the current shape is forward-compatible.
+v1 kept agents independent (each saw only the user request) to avoid coupling.
+Superseded first by cross-agent `depends_on` (ADR-009) and ultimately by the
+single-visible-agent model (ADR-013), where one Threat Hunter does the
+investigation and delegates only to an internal reporting sub-agent.
 
 ---
 
 ## ADR-008: Markdown as the Agent Output Lingua Franca
 
-**Date**: 2026-05-21
-**Status**: Accepted
+**Date**: 2026-05-21 · **Status**: Superseded by ADR-012 (Threat Hunter)
 
-**Context**: Agent outputs need to render in the UI. Choices:
-- Strongly-typed JSON shapes per agent — high fidelity, brittle, requires UI work for every new agent.
-- Free text — easy, ugly.
-- Markdown — readable, supports tables/code/links, sanitizable, can be progressively enriched.
-
-**Chosen Approach**: All agents emit GitHub-flavored markdown. The UI renders with `react-markdown` + `remark-gfm` + `rehype-sanitize`. The `MarkdownView` component accepts a `codeBlockRenderers` registry keyed by language tag — empty in v1, populated later as skills produce structured blocks (` ```spl`, ` ```splunk-chart`, ` ```splunk-table`).
-
-**Consequences**:
-- Adding an agent is just writing a prompt that produces good markdown. Zero UI work.
-- Rich rendering (charts, embedded SPL run-buttons, entity links) is a clean future addition — wire a new renderer into the registry without changing the agent contract.
-- Sanitization is on by default. Agents cannot inject HTML/JS into the UI.
-- A future ADR may add `output_format = json | mixed` to support agents that emit structured data alongside markdown.
+All agents emitted GitHub-flavored markdown, rendered with `react-markdown` +
+sanitization. This was simple and flexible but too loose to drive reliable UI
+behavior. Superseded for the Threat Hunter by the structured event contract
+(ADR-012). Markdown rendering survives for `final`-summary text, the reporting
+sub-agent's internal output, and the (disabled) single-shot agents.
 
 ---
 
 ## ADR-009: Cross-Agent Dependencies via `depends_on`
 
-**Date**: 2026-05-24
-**Status**: Accepted (supersedes ADR-007 "independent in v1")
+**Date**: 2026-05-24 · **Status**: Superseded by ADR-013
 
-**Context**: ADR-007 kept agents independent for safety and simplicity. In practice, downstream agents (timeline, blast_radius, executive_brief) produce better output when they can see upstream findings rather than re-deriving from scratch.
-
-**Chosen Approach**: Optional `depends_on = <agent_id, ...>` field in the stanza. The orchestrator builds a DAG via topological sort and injects prior agents' markdown + artifact metadata into the dependent agent's request as `dependency_context`. Agents without `depends_on` still see only the original request.
-
-**Consequences**:
-- Cycle detection logs an error and falls back to configured order.
-- A prompt change in an upstream agent can affect downstream quality — but this is an acceptable tradeoff given the correctness improvement.
-- Agents remain parallelizable within their DAG depth level (not yet implemented).
+Added an optional `depends_on` DAG so downstream agents could see upstream
+findings. Superseded by the single-visible-agent model: the Threat Hunter holds
+the full investigation context itself, so cross-agent DAG context is no longer
+the mechanism. The `depends_on` plumbing remains for single-shot agents but no
+shipping agent uses it.
 
 ---
 
 ## ADR-010: SSE Streaming for Progressive Rendering
 
-**Date**: 2026-05-24
-**Status**: Accepted
+**Date**: 2026-05-24 · **Status**: Accepted (extended by ADR-016, ADR-017)
 
-**Context**: With 7 sequential agents and LLM latency, a full investigation takes 30-60s. Waiting for a single response payload is poor UX.
-
-**Chosen Approach**: `POST /api/v1/investigations/start` launches the investigation asynchronously. `GET /api/v1/investigations/{id}/stream` provides an SSE endpoint that emits `agent_order`, `agent_complete`, and `complete` events. The frontend connects immediately after starting and renders each agent's section as it arrives.
-
-**Consequences**:
-- Users see results within seconds of the first agent completing.
-- If SSE fails (proxy issues, disconnection), the frontend falls back to polling via `/status`.
-- Investigation state is held in memory (`InvestigationJobStore`). Server restart loses in-flight investigations.
+`/start` launches an async job; `/stream` (SSE) emits progress. Extended later
+to stream per-iteration agent updates and per-revision artifact updates
+(ADR-016) and to require a signed stream token (ADR-017). Investigation state is
+in-memory; a restart loses in-flight runs.
 
 ---
 
 ## ADR-011: Skills as Post-Processing, Not Tool Use
 
-**Date**: 2026-05-24
-**Status**: Accepted
+**Date**: 2026-05-24 · **Status**: Superseded by ADR-012
 
-**Context**: The `splunk_search` skill could be implemented as LLM tool use (the model calls a function mid-generation) or as post-processing (the orchestrator extracts SPL from the completed markdown and executes it). Tool use requires provider-specific API features and complicates the generic `LLMAgent`.
-
-**Chosen Approach**: Skills are post-processing hooks. The agent generates markdown with fenced SPL blocks. After the agent completes, the orchestrator checks `cfg.skills`, extracts blocks via regex, and executes them. Results are attached as structured artifacts.
-
-**Consequences**:
-- The `LLMAgent` class stays completely generic — no tool-use wiring.
-- Any LLM provider works (no function-calling requirement).
-- Agents must be prompted to emit the right fence format — a prompt issue, not a code issue.
-- The approach scales to additional skills (e.g., `mitre_lookup`) by adding more post-processing hooks.
+The `splunk_search` skill was implemented as post-processing: the orchestrator
+regex-extracted fenced SPL from completed markdown and executed it. The agent
+never saw results. Superseded by the agentic harness loop (ADR-012), where the
+agent emits `splunk_search` events, the harness executes one per turn, and feeds
+results back. The post-processing path remains for single-shot agents.
 
 ---
 
 ## ADR-012: Agent-Driven Visualization Hints
 
-**Date**: 2026-05-25
-**Status**: Accepted
+**Date**: 2026-05-25 · **Status**: Accepted (mechanism moved to event payload)
 
-**Context**: The original `infer_visualization` heuristic guessed chart types from data shape (e.g., `_time` field → timechart). This produced incorrect visualizations for queries like `| table _time, user, action` (rendered as a chart instead of a table). The agent that wrote the SPL knows the visualization intent.
+The agent that writes a search declares its visualization, rather than guessing
+from data shape. Originally a fence-tag suffix (` ```spl_column `); now carried
+as `payload.type` on a `splunk_search` event (`timechart | table | column |
+line | pie | single`, `column` aliases `timechart`). `infer_visualization`
+honors the hint first, then falls back to heuristics.
 
-**Chosen Approach**: Agents specify chart type via the code fence tag suffix: `spl_column`, `spl_line`, `spl_bar`, `spl_pie`, `spl_single`, `spl_table`. The harness regex captures the suffix and passes it as `viz_hint` to `infer_visualization`, which uses it as first priority. Bare `spl` fences fall back to the existing data-shape heuristic.
+---
 
-**Consequences**:
-- Visualization correctness is deterministic when agents use the hinted format.
-- New agents must be prompted to use the convention — but the fallback means a naive agent still works.
-- Adding new viz types requires: a new suffix, a renderer branch in `ArtifactRenderer`, and a prompt update.
+## ADR-013: Single Visible Threat Hunter + Reporting Sub-Agent
+
+**Date**: 2026-05-31 · **Status**: Accepted (supersedes ADR-007, ADR-009)
+
+**Context**: Seven peer agents produced loose, hard-to-orchestrate output and a
+fragmented UI. The product is really one investigation, narrated by one analyst.
+
+**Chosen**: collapse the mesh to a single user-visible **primary** agent
+(`spl_hunter`, "Threat Hunter"). The former `executive_brief` becomes an
+internal **subagent** ("Reporting"), invoked only via `handoff` and summarized
+back into the Threat Hunter's stream. The other five agents are kept in
+`agents.conf` as `enabled = 0`. A new `agent_role` field (`primary | subagent`)
+encodes this; the orchestrator runs only primary agents and passes a sub-agent
+lookup to the agentic agent.
+
+**Consequences**: a focused, conversational UI centered on one agent; sub-agents
+become a reusable internal-delegation pattern; reviving a retired persona is a
+one-line conf change.
+
+---
+
+## ADR-014: Delegated Splunk Auth via an Authenticated REST Bridge
+
+**Date**: 2026-05-31 · **Status**: Accepted (amends ADR-001)
+
+**Context**: A single backend admin `SPLUNK_TOKEN` meant every analyst's
+searches ran as one identity, and the browser couldn't reach uvicorn cleanly
+from Splunk Web.
+
+**Chosen**: a Splunk custom REST endpoint, **`agent_mesh_bridge`**
+(`restmap.conf` + `web.conf` + `bin/agent_mesh_bridge.py`), forwards Splunk Web
+API calls to uvicorn carrying the analyst's username and session key. The
+backend validates the session (`/authentication/current-context`), matches it to
+the requesting user, and runs searches as that user (auth scheme `Splunk`). The
+service token is a fallback only, gated by
+`AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK=1`.
+
+**Consequences**: per-analyst least privilege; no shared admin token on the hot
+path; the bridge trusts loopback `X-Splunk-*` headers, so uvicorn must not be
+exposed beyond loopback.
+
+---
+
+## ADR-015: Browser-Side Result Fetching (Row Minimization)
+
+**Date**: 2026-05-31 · **Status**: Accepted
+
+**Context**: Returning full Splunk rows through the backend duplicated data and
+put search results on a second path.
+
+**Chosen**: the backend returns artifacts **without rows**
+(`public_artifact` / `public_investigation`) — only the SID and metadata. The
+browser fetches preview and final rows itself from Splunk Web's authenticated
+`splunkd/__raw` proxy (`services/splunkSearchResults.ts`). Demo artifacts keep
+their rows since they have no real search job.
+
+**Consequences**: rows travel on the analyst's already-authenticated Splunk
+path; the backend handles less data; the LLM still receives a truncated row
+sample for reasoning during the harness loop.
+
+---
+
+## ADR-016: Harness-Driven Event Loop (not Vendor Tool-Use)
+
+**Date**: 2026-05-31 · **Status**: Accepted (refines the ADR-011 successor)
+
+**Context**: The agentic plan (`docs/AGENTIC_ARCHITECTURE_REVIEW.md`) proposed
+Anthropic's native tool-use API. That couples the runtime to one vendor's wire
+format.
+
+**Chosen**: the harness drives the loop using plain `LLMProvider.complete()` and
+parses a strict JSON event envelope itself (`agents/events.py`). It executes at
+most one action per turn (the last `splunk_search` or `handoff`), feeds results
+back, and ends on `final`. A finalize turn + synthetic-final guard close out a
+budget-exhausted run. Validation tolerates a stray ```` ```json ```` fence and
+routes a corrective retry on malformed output.
+
+**Consequences**: provider-agnostic (works for OpenAI/OpenRouter unchanged);
+predictable, auditable single-action turns; no blind search chains. The
+trade-off is no native parallel tool calls, which the one-action rule wants to
+avoid anyway.
+
+---
+
+## ADR-017: Signed, Short-Lived SSE Stream Tokens
+
+**Date**: 2026-05-31 · **Status**: Accepted (extends ADR-010)
+
+**Context**: `EventSource` cannot send auth headers, so the SSE endpoint needed
+its own credential.
+
+**Chosen**: `/start` returns a short-lived HMAC-signed `stream_token`
+(`stream_tokens.py`, default TTL 4h) bound to the investigation id; `/stream`
+validates it. The signing secret is generated per process.
+
+**Consequences**: streams fail closed without a valid token. The per-process
+secret means tokens don't survive a restart and multi-worker deployments would
+need a shared secret — acceptable for the current single-process POC; seed the
+secret from the environment when that changes.
+
+---
+
+## ADR-018: Progressive Search Result Streaming
+
+**Date**: 2026-05-31 · **Status**: Accepted
+
+**Context**: A search card stayed blank until the search finished.
+
+**Chosen**: `SplunkClient` dispatches the job and polls, streaming preview rows
+via an `on_update` callback. Each update bumps the artifact's `_revision`; the
+job store upserts artifacts by id; the SSE loop re-emits an artifact when its
+revision increases. The browser renders pending → running → done.
+
+**Consequences**: live search feedback in the transcript; the SSE de-dup logic
+keys on `_revision` rather than first-seen artifact id.

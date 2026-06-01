@@ -1,220 +1,248 @@
 # Splunk Agent Mesh — Architecture
 
-## Current Repo Structure
+## Conceptual model
 
-```
-splunk-hackathon/
-├── packages/
-│   ├── agent-mesh-ui/                # @splunk/agent-mesh-ui — React component library
-│   │   ├── src/
-│   │   │   ├── Investigations.tsx          # Root app component (top-level tab nav)
-│   │   │   ├── types.ts                    # AgentDescriptor, AgentOutput, InvestigationResult, Artifact
-│   │   │   ├── pages/
-│   │   │   │   ├── InvestigationPage.tsx   # Input card + async job launch + SSE streaming
-│   │   │   │   ├── SettingsPage.tsx
-│   │   │   │   └── AboutPage.tsx
-│   │   │   ├── components/
-│   │   │   │   ├── InvestigationReport.tsx # Report layout — sections per agent, artifacts grouped by agent
-│   │   │   │   ├── ArtifactRenderer.tsx    # Search artifacts → Column/Line/Pie/Bar/Table viz
-│   │   │   │   ├── MarkdownView.tsx        # react-markdown + sanitize
-��   │   │   │   ├── AgentStatusBadge.tsx
-│   │   │   │   ├── AgentTabsPanel.tsx      # Legacy — unused, superseded by InvestigationReport
-│   │   │   │   └── legacy/                 # Archived structured-output components
-│   │   │   ├── services/apiClient.ts       # Fetch wrapper + SSE EventSource streaming
-│   │   │   └── demo/demoData.ts            # Per-agent canned markdown for demo mode
-│   │   └── ...
-│   └── agent-mesh/                   # @splunk/agent-mesh — Splunk app bundle
-│       ├── src/main/
-│       │   ├── webapp/pages/Investigations/    # Webpack entry — mounts <Investigations />
-│       │   └── resources/splunk/
-│       │       ├── default/
-│       │       │   ├── app.conf
-│       │       │   ├── agents.conf             # Agent mesh definition (7 SOC agents)
-│       │       │   └── data/ui/{nav,views}/
-│       │       ├── README/agents.conf.spec     # Splunk spec for agents.conf
-│       │       └── lookups/                    # Sample CSV data
-├── server/
-│   └── agent_mesh/                   # Python FastAPI backend
-│       ├── app.py                          # FastAPI routes + SSE stream endpoint
-│       ├── config.py                       # Env-driven config
-│       ├── conf_reader.py                  # SplunkRestConfReader + FileConfReader
-│       ├── job_store.py                    # In-memory async job manager (ThreadPoolExecutor)
-│       ├── investigation_models.py         # Result shape helpers (markdown_section, audit_event)
-│       ├── request_context.py              # Per-request context (username, splunk_token)
-│       ├── settings_store.py               # Credential storage abstraction
-│       ├── security.py                     # Redaction + URL/model validators
-│       ├── splunk_client.py                # Live Splunk search client (search jobs API)
-│       ├── llm/                            # LLM provider adapters
-│       │   ├── base.py
-│       │   ├── anthropic_provider.py
-│       │   ├── openrouter_provider.py
-│       │   └── openai_compatible_provider.py
-│       ├── agents/
-│       │   ├── agent_config.py             # AgentConfig dataclass (skills, depends_on)
-│       │   ├── llm_agent.py                # Generic LLM-backed agent
-│       │   └── orchestrator.py             # DAG execution, skill dispatch, artifact collection
-│       ├── tools/
-│       │   └── splunk_search.py            # SPL extraction, execution, viz inference
-│       └── demo/demo_case.py               # Per-agent canned markdown
-└── docs/
-    ├── PROJECT_BRIEF.md / DECISIONS.md / AGENT_DESIGN.md / ...
-    └── legacy/heuristics.md                # Archived pre-pivot heuristics
-```
+Splunk Agent Mesh is an agentic SOC investigation copilot. The product is
+centered on **one user-visible agent — the Threat Hunter** — that investigates
+an alert by reasoning, searching Splunk, and reporting. Agents are still defined
+as configuration (`agents.conf` stanzas), but the shipping mesh is deliberately
+focused: a single `primary` agent plus one internal `subagent`.
 
-## Conceptual Model
-
-Splunk Agent Mesh is a generic agentic platform. An "agent" is a stanza in `agents.conf` plus a system prompt. The runtime ships one generic agent class.
+The Threat Hunter communicates exclusively through a **structured event
+stream**. It never emits free prose to the user — it returns a JSON object whose
+`events` array the harness validates, renders, and acts on.
 
 ```mermaid
-graph LR
-    A[agents.conf] -->|REST API| B[SplunkRestConfReader]
+graph TD
+    A[agents.conf] -->|REST or file| B[ConfReader]
     B --> C[Orchestrator]
     D[User request] --> C
-    C -->|DAG order| E1[LLMAgent: triage]
-    C -->|DAG order| E2[LLMAgent: spl_hunter]
-    C -->|DAG order| E3[LLMAgent: ...]
-    E2 -->|spl blocks| F[splunk_search skill]
-    F -->|SearchResult| G[Artifacts]
-    E1 & E2 & E3 -->|markdown| H[Per-agent AgentOutput]
-    H --> I[SSE stream]
-    I --> J[Browser: InvestigationReport]
-    G --> J
+    C -->|primary, agentic| E[Threat Hunter loop]
+    C -.->|subagents map| E
+    E -->|splunk_search event| F[SplunkClient]
+    F -->|rows / preview| E
+    E -->|handoff event| G[Reporting sub-agent]
+    G -->|markdown| E
+    E -->|validated events + artifacts| H[Job store]
+    H -->|SSE| I[Browser transcript]
+    F -.->|sid only; rows fetched by browser| I
 ```
 
-### Execution model
+### Primary agents vs. sub-agents
 
-The Orchestrator builds a DAG from `depends_on` edges and executes agents in topological order. Agents at the same depth level run sequentially (parallel execution is architecturally possible but not yet implemented). Dependent agents receive prior agents' markdown and artifact metadata as additional context.
+- A **primary** agent (`agent_role = primary`) is user-visible and appears in
+  the transcript. Today that is just `spl_hunter` ("Threat Hunter").
+- A **subagent** (`agent_role = subagent`) is a delegated internal capability,
+  invoked only by a primary agent via a `handoff` event and never shown as a
+  peer. Today that is `executive_brief` ("Reporting").
+- The orchestrator runs only primary agents top-level and passes a lookup of
+  sub-agents to the agentic agent.
+- Five legacy SOC agents (`triage`, `timeline`, `blast_radius`,
+  `detection_gap`, `response`) remain in `agents.conf` as `enabled = 0` — kept
+  for easy revival, not run.
 
-### Skills
+## The structured event contract
 
-Agents declare skills in their stanza (`skills = splunk_search`). After an agent completes, the orchestrator checks its skills and post-processes the output:
+The Threat Hunter returns **valid JSON only**: `{"events": [ {type, title, text,
+payload}, ... ]}`. Event types:
 
-- **`splunk_search`**: Extracts fenced SPL blocks from the agent's markdown, executes each against Splunk via the search jobs API, and attaches results as structured artifacts with visualization metadata.
+| Type | Purpose | Notable payload |
+|---|---|---|
+| `narration` | High-level explanation of the current step | — |
+| `splunk_search` | A proposed/executed SPL query | `query`, `purpose`, `type` (viz hint) |
+| `result_summary` | Summary of search or sub-agent results | — |
+| `finding` | A security-relevant observation | structured fields (user, src_ip, confidence, …) |
+| `handoff` | Delegate to a sub-agent | `sub_agent`, `task` |
+| `final` | Closing user-facing answer | `summary`, `recommended_actions` |
 
-### Visualization inference
+Validation lives at the LLM boundary in `agents/events.py` (pydantic
+`EventsEnvelope`/`AgentEvent`). It parses strictly, tolerates a single
+surrounding ```` ```json ```` fence, and on any failure returns the corrective
+message **"Remember to always respond with json."** The UI only ever receives
+validated events.
 
-The viz type is determined by priority:
-1. **Agent hint** — fence tag suffix (e.g., `spl_column` → timechart)
-2. **SPL command** — presence of `timechart` in the query
-3. **Data shape** — field types and row count heuristics
-4. **Fallback** — table
+## The harness loop
 
-## Frontend Architecture
+`agents/agentic_llm_agent.py` (`AgenticLLMAgent`) drives the investigation. It
+is **provider-agnostic**: it calls `LLMProvider.complete()` and parses the JSON
+itself — it does not use any vendor tool-use API.
 
-**Framework**: React 18 + TypeScript
-**UI**: `@splunk/react-ui` v5, styled-components, `@splunk/themes`
-**Visualizations**: `@splunk/visualizations` (Column, Line, Pie) for chart artifacts
-**Markdown**: `react-markdown` + `remark-gfm` + `rehype-sanitize`
+```
+messages = [system_prompt, user_request]
+for iteration in range(max_iterations):
+    response = llm.complete(messages)
+    events, corrective = parse_and_validate(response)
+    if corrective:
+        append assistant(response) + user("Remember to always respond with json.")
+        continue
+    record events
+    action = last event if its type is splunk_search or handoff else None
+    if action is splunk_search: run SPL, append results, loop
+    elif action is handoff:     run sub-agent, append its output, loop
+    else:                       stop (final / informational terminal)
+# if the budget ran out mid-action: one finalize turn, then a synthetic final
+```
 
-The component library is `@splunk/agent-mesh-ui`. The Splunk app `@splunk/agent-mesh` is a thin wrapper that mounts `<Investigations />` via `@splunk/react-page`.
+Key properties:
 
-Top-level navigation: three tabs (Investigation / Settings / About) in the root `Investigations` component.
+- **One external action per turn**, taken from the *last* event. This prevents
+  the model from queuing a blind chain of dependent searches.
+- **Handoff** runs the named sub-agent (`executive_brief`), feeds its markdown
+  back into the conversation, and asks the Threat Hunter to summarize it as a
+  `result_summary` + `final`. The sub-agent's raw output never reaches the UI.
+- **Finalize turn + synthetic final**: if `max_iterations` is hit while an
+  action is still pending, the harness makes one closing call ("you're out of
+  budget, summarize now"); if even that yields no terminal event, it appends a
+  harness-authored `final` so the stream never dangles.
+
+## Search execution and artifacts
+
+A `splunk_search` event's `payload.query` is executed by
+`tools/splunk_search.py::run_splunk_search_artifact`, which produces an
+**artifact** dict (`fields`, `rows`, `sid`, `visualization`, `_revision`).
+
+- **Progressive results**: `SplunkClient` dispatches the job, then polls;
+  preview rows stream back through an `on_update` callback. Each update bumps
+  the artifact's `_revision`, the job store upserts the artifact by id, and the
+  SSE loop re-emits it — so a search card animates pending → running → done.
+- **Visualization**: `payload.type` is a hint (`timechart | table | column |
+  line | pie | single`; `column` aliases `timechart`). `infer_visualization`
+  honors the hint first, then falls back to SPL/data-shape heuristics.
+
+## Frontend architecture
+
+**Framework**: React 18 + TypeScript. **UI**: `@splunk/react-ui` v5,
+styled-components, `@splunk/themes`. **Charts**: `@splunk/visualizations`
+(Column, Line, Pie). **Markdown**: `react-markdown` + `remark-gfm` +
+`rehype-sanitize` (used for final-summary text and the legacy fallback).
+
+The component library is `@splunk/agent-mesh-ui`; the Splunk app
+`@splunk/agent-mesh` mounts `<Investigations />`. Top-level nav has three tabs
+(Investigation / Settings / About).
 
 ### Investigation flow
 
-1. User fills in the investigation form and clicks Start.
-2. `InvestigationPage` calls `POST /api/v1/investigations/start` (returns immediately with an ID).
-3. The page connects to `GET /api/v1/investigations/{id}/stream` (SSE).
-4. As each agent completes, the server emits an `agent_complete` event; the UI renders that agent's section progressively.
-5. On stream completion, the page fetches the full investigation (including artifacts) and renders charts/tables inline.
+1. The analyst fills the form and clicks Start.
+2. `POST /investigations/start` returns an id **and a `stream_token`**.
+3. The page opens `GET /investigations/{id}/stream?stream_token=…` (SSE).
+4. As events arrive (`agent_update` / `agent_complete`), the transcript reveals
+   them one at a time (`useStaggeredReveal`) and auto-follows the bottom unless
+   the analyst has scrolled up.
+5. For each `splunk_search` artifact, the browser polls Splunk Web directly for
+   preview and final rows and renders the chart inline. (The backend does not
+   return rows — see Security.)
 
 ### Component hierarchy
 
 ```
 Investigations
-└── InvestigationPage
-    ├── FormCard (input fields + buttons)
-    └── InvestigationReport
-        ├── ReportHeader (id, status, owner)
-        └── per agent:
-            ├── SectionHeader + AgentStatusBadge
-            ├── MarkdownView (agent markdown)
-            └── ArtifactRenderer × N (search results as charts/tables)
+└── InvestigationPage              (form, start, SSE, browser result polling)
+    ├── FormCard
+    └── InvestigationReport        (console workspace)
+        ├── Toolbar                (title + Clear)
+        ├── AgentHead              (agent name + status badge)
+        └── TranscriptShell
+            ├── ScrollArea         (staggered reveal, stick-to-bottom autoscroll)
+            │   ├── EventRenderer × N   (colored accent blocks per event type)
+            │   ├── ArtifactRenderer    (inline chart/table after each search event)
+            │   └── ThinkingIndicator   (while the agent is working)
+            └── StatusBar          (investigation state, hunter state, event count, id)
 ```
 
-## Backend Architecture
+## Backend architecture
 
 **Framework**: Python FastAPI on uvicorn, port 8765.
-**Conf source**: `SplunkRestConfReader` calls `/servicesNS/nobody/splunk-agent-mesh/configs/conf-agents` to read agent stanzas. Falls back to `FileConfReader` when `SPLUNK_TOKEN` is absent.
-**Job execution**: `InvestigationJobStore` manages async investigations in a thread pool, with SSE streaming of progress events.
+**Conf source**: `SplunkRestConfReader` reads agent stanzas via
+`/servicesNS/nobody/splunk-agent-mesh/configs/conf-agents`; `FileConfReader` is
+the dev/test fallback when `SPLUNK_TOKEN` is absent.
+**Job execution**: `InvestigationJobStore` runs investigations in a thread pool
+and the SSE endpoint streams progress.
 
-### Conf reading
+### Orchestrator
 
-1. Backend calls Splunk REST: `GET /servicesNS/nobody/splunk-agent-mesh/configs/conf-agents?output_mode=json&count=0`.
-2. Filters entries whose name starts with `agent:`.
-3. Merges the `[default]` stanza into each agent's content.
-4. Builds an `AgentConfig` per enabled stanza (including `skills` and `depends_on`).
-5. Returns the list sorted by `order` (then by id).
-
-### Agent execution
-
-`LLMAgent.run(request)` builds two messages:
-- `system` = the stanza's `system_prompt`.
-- `user` = a stable rendering of the user's request fields (plus dependency context if applicable).
-
-Calls `LLMProvider.complete(messages, model, temperature, max_tokens)`. On success, returns `{status: completed, markdown, model, started_at, completed_at}`. On exception, returns `{status: error, error, markdown: "_Agent failed: ..._"}`. One agent failing never sinks the mesh.
-
-### Skill execution (post-agent)
-
-After an agent completes, the orchestrator checks `cfg.skills`:
-1. If `splunk_search` is in skills, extracts fenced SPL blocks from markdown.
-2. For each block (max 4), calls `SplunkClient.run_search(spl, earliest, latest)`.
-3. Wraps results into artifact dicts with fields, rows, visualization metadata.
-4. Artifacts are attached to the investigation result and streamed to the UI.
+`Orchestrator.run()` reads all enabled agents, splits them into `primary` and
+`subagent` sets, executes only the primary agents, and hands the sub-agent
+lookup to the agentic agent. A `primary` agent with `agent_mode = agentic` runs
+through `AgenticLLMAgent`; a `single_shot` agent runs through the generic
+`LLMAgent` (and the legacy `depends_on` DAG / fenced-SPL post-processing path
+still exists for such agents, though none ship enabled today).
 
 ### SSE streaming
 
-The `/api/v1/investigations/{id}/stream` endpoint uses Server-Sent Events:
-- `agent_order` — emitted once with the full agent execution list
-- `agent_complete` — emitted per agent with its output
-- `complete` — emitted when all agents finish
+`/api/v1/investigations/{id}/stream` emits:
 
-## How React Talks to Backend
+- `agent_order` — once, the list of primary agent ids.
+- `agent_update` — an in-progress snapshot of the agent's events + any
+  newly-revised artifacts.
+- `agent_complete` — the agent's terminal snapshot.
+- `investigation_complete` — when the run finishes.
+- `error` — on stream/job error.
 
-Inside Splunk Web, the React app sends JSON API requests through the
-Splunk-authenticated `agent_mesh_bridge` custom REST endpoint. Splunk Web
-proxies those requests under `/<locale>/splunkd/__raw/services/...`; the bridge
+Artifacts are re-emitted whenever their `_revision` increases, so the browser
+sees live search progress. The endpoint requires a valid `stream_token`.
+
+## How React talks to the backend
+
+Inside Splunk Web the React app sends JSON API requests through the
+Splunk-authenticated **`agent_mesh_bridge`** custom REST endpoint
+(`bin/agent_mesh_bridge.py`, exposed via `restmap.conf` + `web.conf`). Splunk
+Web proxies these under `/<locale>/splunkd/__raw/services/…`; the bridge
 forwards them to `http://127.0.0.1:8765/api/v1` with the authenticated Splunk
 username and session key. Direct uvicorn calls remain available for explicit
 development use.
 
-The SSE stream connects directly to uvicorn with a short-lived signed stream
-token returned by `/investigations/start`.
+The SSE stream connects directly to uvicorn with the short-lived signed
+`stream_token` returned by `/start` (EventSource cannot send headers).
 
-Endpoints:
-- `GET /api/v1/health`
-- `GET /api/v1/agents` → `{ agents: AgentDescriptor[] }`
-- `GET /api/v1/settings`
-- `POST /api/v1/settings`
-- `POST /api/v1/settings/test`
-- `DELETE /api/v1/settings/credentials`
-- `POST /api/v1/investigations/run` (synchronous, blocks)
-- `POST /api/v1/investigations/start` (async, returns ID)
-- `GET /api/v1/investigations/{id}/status`
-- `GET /api/v1/investigations/{id}/stream` (SSE)
-- `POST /api/v1/investigations/{id}/cancel`
-
-All `fetch` calls use `AbortController` with timeouts (30s default, 120s for investigation runs, 5s for health).
-
-## How Backend Talks to Splunk
+## How the backend talks to Splunk
 
 - **Conf reading**: `SplunkRestConfReader` reads agent stanzas via REST.
-- **Search execution**: `SplunkClient` submits searches with the delegated user's
-  Splunk session key, emits the SID, polls for completion, and returns final
-  field/row results to the harness for the next LLM turn.
+- **Search execution**: `SplunkClient` submits searches with the delegated
+  user's session key (auth scheme `Splunk`), emits the SID, polls, streams
+  preview rows, and returns final rows to the harness for the next LLM turn.
 - **Browser chart data**: React polls `results_preview` and `results` through
-  Splunk Web's authenticated `splunkd/__raw` proxy using `@splunk/splunk-utils`.
-- **Credential storage**: `SplunkSecureSettingsStore` (Passwords API) — stubbed, using `DevSettingsStore` in current deployment.
+  Splunk Web's authenticated `splunkd/__raw` proxy using `@splunk/splunk-utils`
+  (`services/splunkSearchResults.ts`).
+- **Session validation**: before a live run, the backend calls
+  `/authentication/current-context` to confirm the session is valid and matches
+  the requesting user.
+- **Credential storage**: `SplunkSecureSettingsStore` (Passwords API) — stubbed;
+  `DevSettingsStore` is used in the current deployment.
 
-## How Backend Talks to LLM Providers
+## How the backend talks to LLM providers
 
-All LLM calls go through the `LLMProvider` base interface (`complete(messages, model, temperature, max_tokens)`). The active provider is selected from settings. API keys are retrieved from the secure store at request time, never cached in memory beyond the request.
+All LLM calls go through `LLMProvider.complete(messages, model, temperature,
+max_tokens)`. Anthropic is the active provider; OpenRouter and OpenAI-compatible
+adapters implement the same interface. Because the agentic loop is built on
+`complete()` (not vendor tool-use), every provider works without special-casing.
 
-## Known Risks
+## Security posture
 
-1. **CORS**: FastAPI backend needs CORS configured for Splunk Web origin. Default allowlist includes `http://localhost:8000`.
-2. **Backend auth**: MVP has no per-request auth on the backend. Production should validate Splunk session tokens.
-3. **LLM latency**: Each agent is a synchronous LLM call. With 7 agents sequential, a full run can take 30-60s. The SSE streaming mitigates perceived latency by showing results progressively.
-4. **Splunk REST availability**: If the Splunk REST API is unreachable, `SplunkRestConfReader.get_agents()` logs an error and returns `[]`. The UI shows an empty-mesh state.
-5. **Secret storage**: `DevSettingsStore` refuses plaintext unless `AGENT_MESH_DEV_MODE=1`. Production uses Splunk Passwords API.
-6. **Markdown sanitization**: All agent output is sanitized via `rehype-sanitize` before render. Agents cannot inject HTML/JS.
+- **Delegated per-request auth**: live investigations require the analyst's
+  Splunk session, validated and matched to the requesting user. The service
+  `SPLUNK_TOKEN` is only a fallback, gated behind
+  `AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK=1`.
+- **Row minimization**: `public_artifact` / `public_investigation` strip search
+  rows from API responses; the browser fetches rows itself via Splunk Web's
+  authenticated proxy. Demo artifacts keep their rows (no real search job).
+- **Signed SSE tokens**: `stream_tokens.py` issues short-lived HMAC tokens
+  (default 4h). The secret is per-process (regenerated on restart) — acceptable
+  for the current single-process deployment; see `docs/legacy/HISTORY.md` for
+  the tradeoff.
+- **Output safety**: the model boundary accepts only validated JSON events;
+  markdown rendered in the UI is sanitized via `rehype-sanitize`.
+
+## Known risks
+
+1. **CORS**: the backend needs the Splunk Web origin allowlisted (default
+   includes `http://localhost:8000`).
+2. **In-memory job state**: `InvestigationJobStore` holds investigations in
+   memory; a server restart loses in-flight runs (and invalidates issued stream
+   tokens).
+3. **Single-process assumption**: the stream-token secret and job store assume
+   one process; running multiple uvicorn workers would need a shared secret and
+   store.
+4. **Splunk REST availability**: if REST is unreachable, `get_agents()` returns
+   `[]` and the UI shows an empty mesh.
+5. **LLM latency / cost**: an agentic run makes several LLM calls;
+   `max_iterations` is the primary cap.
