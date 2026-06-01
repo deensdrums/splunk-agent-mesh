@@ -11,6 +11,7 @@ from fastapi import Request
 class RequestContext:
     username: str
     splunk_token: str | None = None
+    splunk_auth_scheme: str = "Splunk"
     request_id: str | None = None
     source: str = "direct"
 
@@ -24,10 +25,11 @@ def context_from_request(request: Request) -> RequestContext:
     """
     auth = request.headers.get("authorization", "")
     bearer = auth.removeprefix("Bearer ").strip() if auth.lower().startswith("bearer ") else None
+    session_key = request.headers.get("x-splunk-token")
     return RequestContext(
         username=request.headers.get("x-splunk-user", "dev-user"),
-        splunk_token=request.headers.get("x-splunk-token") or bearer or None,
+        splunk_token=session_key or bearer or None,
+        splunk_auth_scheme="Splunk" if session_key else "Bearer",
         request_id=request.headers.get("x-request-id"),
         source=request.headers.get("x-agent-mesh-source", "direct"),
     )
-

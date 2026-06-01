@@ -1,3 +1,4 @@
+import { createFetchInit } from '@splunk/splunk-utils/fetch';
 import {
     AgentDescriptor,
     AgentOutput,
@@ -9,11 +10,16 @@ import {
     LLMSettings,
     SaveSettingsRequest,
 } from '../types';
+import { createSplunkWebRESTURL, isSplunkWebRuntime } from './splunkWeb';
 
-const BASE_URL =
+const DIRECT_BASE_URL =
     (typeof window !== 'undefined' && (window as any).__AGENT_MESH_API_URL__) ||
     'http://localhost:8765';
-export const API_ROOT = `${BASE_URL}/api/v1`;
+const USE_SPLUNK_WEB = isSplunkWebRuntime();
+export const API_ROOT = USE_SPLUNK_WEB
+    ? `${createSplunkWebRESTURL('agent_mesh_bridge')}/api/v1`
+    : `${DIRECT_BASE_URL}/api/v1`;
+const STREAM_API_ROOT = `${DIRECT_BASE_URL}/api/v1`;
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -40,18 +46,18 @@ export class ApiTimeoutError extends Error {
 async function request<T>(path: string, init?: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const splunkUser = getSplunkUser();
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...init?.headers as Record<string, string>,
     };
-    if (splunkUser) {
-        headers['x-splunk-user'] = splunkUser;
-    }
+    const splunkUser = getSplunkUser();
+    if (!USE_SPLUNK_WEB && splunkUser) {headers['x-splunk-user'] = splunkUser;}
     try {
+        const requestInit = USE_SPLUNK_WEB
+            ? createFetchInit({ ...init, headers })
+            : { ...init, headers };
         const res = await fetch(`${API_ROOT}${path}`, {
-            ...init,
-            headers,
+            ...requestInit,
             signal: controller.signal,
         });
         if (!res.ok) {
@@ -126,9 +132,10 @@ export interface InvestigationStreamCallbacks {
 
 export function createInvestigationStream(
     id: string,
+    streamToken: string,
     callbacks: InvestigationStreamCallbacks,
 ): { close: () => void } {
-    const url = `${API_ROOT}/investigations/${encodeURIComponent(id)}/stream`;
+    const url = `${STREAM_API_ROOT}/investigations/${encodeURIComponent(id)}/stream?stream_token=${encodeURIComponent(streamToken)}`;
     const es = new EventSource(url);
 
     es.onmessage = (event: MessageEvent) => {

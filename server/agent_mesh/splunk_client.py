@@ -25,13 +25,14 @@ class SearchResult:
 
 
 class SplunkClient:
-    def __init__(self, host: str, token: str, verify_ssl: bool = False):
+    def __init__(self, host: str, token: str, verify_ssl: bool = False, auth_scheme: str = "Bearer"):
         self.host = host
         self.token = token
         self.verify_ssl = verify_ssl
+        self.auth_scheme = auth_scheme
 
     def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.token}"}
+        return {"Authorization": f"{self.auth_scheme} {self.token}"}
 
     def _url(self, path: str) -> str:
         return f"{self.host.rstrip('/')}{path}"
@@ -52,7 +53,6 @@ class SplunkClient:
         if on_update:
             on_update(dispatched)
 
-        last_preview: SearchResult | None = None
         deadline = monotonic() + timeout_seconds
         while monotonic() < deadline:
             status = self.get_search_status(dispatched.sid, spl)
@@ -66,12 +66,8 @@ class SplunkClient:
                     on_update(result)
                 return result
 
-            preview = self.get_preview_results(dispatched.sid, spl, max_rows)
-            if on_update and preview != last_preview:
-                on_update(preview)
-                last_preview = preview
             sleep(0.5)
-        return last_preview or dispatched
+        return dispatched
 
     def dispatch_search(self, spl: str, earliest: str = "-24h", latest: str = "now") -> SearchResult:
         """Create a Splunk search job with preview generation enabled."""
@@ -84,6 +80,7 @@ class SplunkClient:
                     "earliest_time": earliest,
                     "latest_time": latest,
                     "status_buckets": "300",
+                    "preview": "1",
                     "output_mode": "json",
                 },
                 headers=self._headers(),
@@ -175,6 +172,23 @@ class SplunkClient:
         except httpx.HTTPError:
             logger.exception("Splunk search cancel failed.")
             return False
+
+    def get_authenticated_username(self) -> str | None:
+        """Return the Splunk username represented by this credential."""
+        try:
+            response = httpx.get(
+                self._url("/services/authentication/current-context"),
+                params={"output_mode": "json"},
+                headers=self._headers(),
+                verify=self.verify_ssl,
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            content = (response.json().get("entry") or [{}])[0].get("content", {})
+            return content.get("username")
+        except httpx.HTTPError:
+            logger.exception("Splunk session validation failed.")
+            return None
 
 
 class DemoSplunkClient(SplunkClient):

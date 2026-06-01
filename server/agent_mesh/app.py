@@ -10,12 +10,21 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
-from .config import CORS_ORIGINS, LOG_LEVEL, SPLUNK_HOST, SPLUNK_TOKEN
+from .config import (
+    ALLOW_SERVICE_SEARCH_FALLBACK,
+    CORS_ORIGINS,
+    LOG_LEVEL,
+    SPLUNK_HOST,
+    SPLUNK_TOKEN,
+    STREAM_TOKEN_TTL_SECONDS,
+)
 from .conf_reader import get_conf_reader
+from .investigation_models import public_artifact, public_investigation
 from .job_store import JOB_STORE
 from .request_context import RequestContext, context_from_request
 from .settings_store import get_settings_store
 from .splunk_client import DemoSplunkClient, SplunkClient
+from .stream_tokens import create_stream_token, is_valid_stream_token
 from .security import is_safe_model_name, is_safe_url, redact_key
 from .agents.orchestrator import Orchestrator
 
@@ -182,9 +191,10 @@ def run_investigation(req: InvestigationRequest, http_request: Request):
         raise HTTPException(status_code=400, detail="description is required.")
 
     context = context_from_request(http_request)
+    _validate_delegated_context(context, req.demo)
     orchestrator = _build_orchestrator(req.demo, context)
     result = orchestrator.run(req.model_dump())
-    return result
+    return public_investigation(result)
 
 
 @app.post("/api/v1/investigations/start")
@@ -193,6 +203,7 @@ def start_investigation(req: InvestigationRequest, http_request: Request):
         raise HTTPException(status_code=400, detail="description is required.")
 
     context = context_from_request(http_request)
+    _validate_delegated_context(context, req.demo)
     payload = req.model_dump()
 
     def runner(
@@ -214,6 +225,7 @@ def start_investigation(req: InvestigationRequest, http_request: Request):
         "status": job["status"],
         "owner": job["owner"],
         "started_at": job["started_at"],
+        "stream_token": create_stream_token(job["id"], STREAM_TOKEN_TTL_SECONDS),
     }
 
 
@@ -236,7 +248,7 @@ def cancel_investigation(investigation_id: str, http_request: Request):
 
 
 @app.get("/api/v1/investigations/{investigation_id}/stream")
-async def stream_investigation(investigation_id: str):
+async def stream_investigation(investigation_id: str, stream_token: str):
     """SSE stream of investigation progress.
 
     Emits events as each agent completes. The investigation ID is the
@@ -244,6 +256,8 @@ async def stream_investigation(investigation_id: str):
     header-based auth is not possible here. Production path: signed
     stream token returned by POST /investigations/start.
     """
+    if not is_valid_stream_token(investigation_id, stream_token):
+        raise HTTPException(status_code=403, detail="Invalid or expired stream token.")
     return StreamingResponse(
         _stream_events(investigation_id),
         media_type="text/event-stream",
@@ -260,7 +274,7 @@ def get_investigation(investigation_id: str, http_request: Request):
     job = JOB_STORE.get(investigation_id, username=context.username)
     if job is None:
         raise HTTPException(status_code=404, detail="Investigation not found.")
-    return job
+    return public_investigation(job)
 
 
 async def _stream_events(investigation_id: str):
@@ -302,7 +316,7 @@ async def _stream_events(investigation_id: str):
                     "type": "agent_complete" if is_final else "agent_update",
                     "agent_id": agent_id,
                     "output": output,
-                    "artifacts": changed_artifacts,
+                    "artifacts": [public_artifact(artifact) for artifact in changed_artifacts],
                 })
 
         if job["status"] not in ("running", "pending"):
@@ -349,10 +363,31 @@ def _build_orchestrator(is_demo: bool, context: RequestContext) -> Orchestrator:
 def _build_splunk_client(is_demo: bool, context: RequestContext) -> SplunkClient | None:
     if is_demo:
         return DemoSplunkClient()
-    token = context.splunk_token or SPLUNK_TOKEN
-    if not token:
-        return None
-    return SplunkClient(SPLUNK_HOST, token)
+    if context.splunk_token:
+        return SplunkClient(SPLUNK_HOST, context.splunk_token, auth_scheme=context.splunk_auth_scheme)
+    if ALLOW_SERVICE_SEARCH_FALLBACK and SPLUNK_TOKEN:
+        return SplunkClient(SPLUNK_HOST, SPLUNK_TOKEN)
+    return None
+
+
+def _validate_delegated_context(context: RequestContext, is_demo: bool) -> None:
+    """Require and validate the user's delegated Splunk session for live runs."""
+    if is_demo:
+        return
+    if not context.splunk_token:
+        if ALLOW_SERVICE_SEARCH_FALLBACK and SPLUNK_TOKEN:
+            return
+        raise HTTPException(status_code=401, detail="Authenticated Splunk session required.")
+    username = SplunkClient(
+        SPLUNK_HOST,
+        context.splunk_token,
+        auth_scheme=context.splunk_auth_scheme,
+    ).get_authenticated_username()
+    if not username:
+        raise HTTPException(status_code=401, detail="Splunk session is invalid or expired.")
+    if username != context.username:
+        raise HTTPException(status_code=403, detail="Splunk session user does not match the requested user.")
+
 
 def _build_provider(provider: str, key: str, model: str, base_url: str):
     if provider == "anthropic":

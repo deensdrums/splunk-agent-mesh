@@ -171,7 +171,15 @@ The `/api/v1/investigations/{id}/stream` endpoint uses Server-Sent Events:
 
 ## How React Talks to Backend
 
-The React app calls `http://localhost:8765/api/v1` via `apiClient.ts`. The base URL can be overridden by setting `window.__AGENT_MESH_API_URL__` in the Splunk page template.
+Inside Splunk Web, the React app sends JSON API requests through the
+Splunk-authenticated `agent_mesh_bridge` custom REST endpoint. Splunk Web
+proxies those requests under `/<locale>/splunkd/__raw/services/...`; the bridge
+forwards them to `http://127.0.0.1:8765/api/v1` with the authenticated Splunk
+username and session key. Direct uvicorn calls remain available for explicit
+development use.
+
+The SSE stream connects directly to uvicorn with a short-lived signed stream
+token returned by `/investigations/start`.
 
 Endpoints:
 - `GET /api/v1/health`
@@ -191,7 +199,11 @@ All `fetch` calls use `AbortController` with timeouts (30s default, 120s for inv
 ## How Backend Talks to Splunk
 
 - **Conf reading**: `SplunkRestConfReader` reads agent stanzas via REST.
-- **Search execution**: `SplunkClient` submits searches via `/services/search/jobs`, polls for completion, and returns field/row results.
+- **Search execution**: `SplunkClient` submits searches with the delegated user's
+  Splunk session key, emits the SID, polls for completion, and returns final
+  field/row results to the harness for the next LLM turn.
+- **Browser chart data**: React polls `results_preview` and `results` through
+  Splunk Web's authenticated `splunkd/__raw` proxy using `@splunk/splunk-utils`.
 - **Credential storage**: `SplunkSecureSettingsStore` (Passwords API) — stubbed, using `DevSettingsStore` in current deployment.
 
 ## How Backend Talks to LLM Providers

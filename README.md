@@ -25,11 +25,15 @@ SplunkRestConfReader  ──▶  Orchestrator  ──▶  LLMAgent × N  ──�
                         (progressive rendering)
 ```
 
-- **Backend**: FastAPI on port 8765. Reads `agents.conf` via Splunk REST.
+- **Backend**: FastAPI on port 8765. Reads `agents.conf` via Splunk REST. Live
+  investigations enter through a Splunk-authenticated REST bridge and use the
+  analyst's delegated Splunk session for searches.
 - Each agent is fully described by its stanza (system prompt, model, order, skills, dependencies).
 - The runtime ships one generic `LLMAgent` — no per-agent code.
 - Agents with `depends_on` receive prior agents' markdown and artifact metadata as context.
 - Agents with `skills = splunk_search` emit fenced SPL blocks; the orchestrator executes them against Splunk and attaches results as structured artifacts.
+- Browser charts poll Splunk Web's `splunkd/__raw` proxy for previews and final
+  rows while the harness independently waits for final rows for the LLM.
 - The UI renders progressively via SSE — each agent's section appears as it completes.
 
 ---

@@ -28,10 +28,10 @@
 
 ## Security hardening
 
-- [ ] Validate Splunk session token on every backend request (per-request auth).
+- [x] Validate delegated Splunk session token before starting live investigations.
 - [ ] Rate limit `/investigations/start`.
 - [ ] Backend timeouts on LLM calls (per-agent).
-- [ ] Per-request session-token forwarding from browser instead of single backend admin token.
+- [x] Forward Splunk Web session tokens through an authenticated REST bridge for live searches.
 
 ## Future features
 
