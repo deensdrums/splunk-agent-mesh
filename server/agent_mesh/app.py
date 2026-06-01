@@ -280,6 +280,7 @@ def get_investigation(investigation_id: str, http_request: Request):
 async def _stream_events(investigation_id: str):
     seen_agent_iters: dict[str, int] = {}
     seen_artifact_revisions: dict[str, int] = {}
+    seen_agent_phase: dict[str, str | None] = {}
     order_sent = False
     polls_with_no_job = 0
 
@@ -306,9 +307,14 @@ async def _stream_events(investigation_id: str):
                 a for a in agent_artifacts
                 if a.get("_revision", 0) > seen_artifact_revisions.get(a.get("id"), -1)
             ]
+            # A phase change (e.g. "delegating") can happen within an iteration
+            # with no new artifact, so detect it explicitly or the update is lost.
+            phase = output.get("phase")
+            phase_changed = agent_id not in seen_agent_phase or seen_agent_phase[agent_id] != phase
 
-            if current_iter > last_iter or changed_artifacts:
+            if current_iter > last_iter or changed_artifacts or phase_changed:
                 seen_agent_iters[agent_id] = current_iter
+                seen_agent_phase[agent_id] = phase
                 for artifact in changed_artifacts:
                     seen_artifact_revisions[artifact["id"]] = artifact.get("_revision", 0)
                 is_final = output.get("status") not in ("running", "iterating")

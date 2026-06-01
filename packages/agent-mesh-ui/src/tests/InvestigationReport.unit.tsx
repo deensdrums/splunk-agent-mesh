@@ -242,6 +242,18 @@ describe('InvestigationReport console', () => {
         expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Finalizing');
     });
 
+    test('prefers the backend phase label over inference', () => {
+        const result = resultWithEvents([EVENT_ONE, HANDOFF_EVENT]);
+        result.agents.spl_hunter.phase = 'delegating';
+
+        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Consulting the reporting agent');
+    });
+
     test('shows a working label while active and hides it after the final event is revealed', () => {
         const { rerender } = render(
             <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />

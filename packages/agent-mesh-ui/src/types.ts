@@ -40,6 +40,9 @@ export interface AgentOutput {
     // for older single-shot agents and dependency context.
     events?: AgentEvent[];
     markdown: string;
+    // Transient hint of what the harness is doing right now (e.g. "delegating",
+    // "interpreting", "finalizing"). Advisory; the UI infers a label when absent.
+    phase?: string | null;
     model?: string;
     started_at?: string;
     completed_at?: string;

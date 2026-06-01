@@ -245,6 +245,20 @@ const Placeholder = styled.div`
     color: ${variables.contentColorMuted};
 `;
 
+// Authoritative labels when the backend reports its phase. Preferred over the
+// client-side inference below, since the harness knows exactly what it's doing —
+// including the sub-agent ("delegating") window the UI can't otherwise observe.
+const PHASE_LABELS: Record<string, string> = {
+    delegating: 'Consulting the reporting agent',
+    interpreting: 'Interpreting results',
+    finalizing: 'Finalizing',
+    investigating: 'Investigating',
+};
+
+function phaseLabel(phase?: string | null): string | null {
+    return phase ? PHASE_LABELS[phase] ?? null : null;
+}
+
 /**
  * Context-aware label for the working indicator, derived from the last
  * *revealed* event (so it stays coherent with the visible transcript) and, for
@@ -366,7 +380,8 @@ const AgentTranscript: React.FC<{
         // event is revealed, so none appears before its search card.
         const leftover = revealed >= total ? artifacts.slice(searchIndex) : [];
         const finalRevealed = visible.some((event) => event.type === 'final');
-        const label = thinkingLabel(visible, artifacts);
+        // Prefer the backend's reported phase; fall back to client-side inference.
+        const label = phaseLabel(output?.phase) ?? thinkingLabel(visible, artifacts);
         const showThinking = isActive && !finalRevealed && label !== null;
         body = (
             <>
