@@ -2,53 +2,62 @@
 
 ## Done
 
-- [x] **Validate LLM provider adapters end-to-end** — Anthropic provider is live and tested.
-- [x] **Validate `SplunkRestConfReader` against live Splunk** — agents.conf reads correctly via REST.
-- [x] **Skills: `splunk_search`** — agents emit fenced SPL blocks, orchestrator extracts and executes them, results rendered as artifacts.
-- [x] **Cross-agent context (`depends_on`)** — orchestrator builds DAG, passes prior outputs to dependent agents.
-- [x] **SSE streaming** — progressive per-agent rendering via Server-Sent Events.
-- [x] **Async job API** — `/start`, `/status`, `/stream`, `/cancel` endpoints.
-- [x] **`SplunkClient`** — live search execution against Splunk search jobs API.
-- [x] **Visualization inference** — agent-driven hints via fence tag suffixes (`spl_column`, `spl_table`, etc.) with data-shape fallback.
-- [x] **`@splunk/visualizations`** — Column, Line, Pie chart rendering for search artifacts.
-- [x] **InvestigationReport** — report-style layout replacing legacy tab panel.
+- [x] **Config-driven agents** — `agents.conf` stanzas, `SplunkRestConfReader` +
+  `FileConfReader`.
+- [x] **LLM provider adapters** — Anthropic live; OpenRouter + OpenAI-compatible
+  share the `complete()` interface.
+- [x] **Live `SplunkClient`** — dispatch / poll / preview / final against the
+  search jobs API.
+- [x] **Structured event contract** — `agents/events.py` schema + validator,
+  corrective retry, tolerant code-fence stripping.
+- [x] **Harness-driven agentic loop** — one action per turn, handoff to the
+  reporting sub-agent, finalize-turn + synthetic-final guard.
+- [x] **Single visible Threat Hunter + Reporting sub-agent** — `agent_role`
+  split; five legacy personas retained but disabled.
+- [x] **Progressive search streaming** — preview rows + artifact `_revision`
+  re-emission over SSE.
+- [x] **Delegated Splunk auth** — `agent_mesh_bridge` REST endpoint, per-request
+  session validation, signed SSE stream tokens, browser-side row fetching.
+- [x] **Console UI** — staggered event reveal, stick-to-bottom auto-follow,
+  status bar, inline charts, thinking indicator.
+- [x] **Tests** — backend (`test_events.py`, `test_progressive_search.py`);
+  frontend (`InvestigationReport`, `InvestigationPage`, `splunkSearchResults`,
+  `useStaggeredReveal`).
 
 ## Immediate
 
-- [ ] **Smoke-test all viz types with real data** — confirm Column, Line, Pie, Bar, Table, Single all render correctly for their respective SPL patterns.
-- [ ] **Remove `AgentTabsPanel`** — dead code, superseded by `InvestigationReport`.
-- [ ] **Demo storyboard alignment** — update `DEMO_STORYBOARD.md` to match current UI (report layout, not tabs).
+- [ ] **Remove `AgentTabsPanel`** and unused `legacy/` components if not being
+  revived.
+- [ ] **Smoke-test all viz types** with real data (Column, Line, Pie, Bar,
+  Table, Single).
 
-## Polish
+## Security / hardening
 
-- [ ] Animate agent status in report (pulsing spinner while running).
-- [ ] "Export full investigation" button (concatenated markdown + artifact summaries).
-- [ ] Settings page: list configured agents (read-only) so admins can verify the mesh.
-- [ ] Persist investigation results to Splunk KV Store for history.
-
-## Security hardening
-
-- [x] Validate delegated Splunk session token before starting live investigations.
-- [ ] Rate limit `/investigations/start`.
-- [ ] Backend timeouts on LLM calls (per-agent).
-- [x] Forward Splunk Web session tokens through an authenticated REST bridge for live searches.
+- [x] Validate the delegated Splunk session before live investigations.
+- [x] Forward Splunk Web session tokens through the authenticated REST bridge.
+- [ ] Rate-limit `/investigations/start`.
+- [ ] Per-agent LLM call timeouts.
+- [ ] Seed the SSE stream-token secret from the environment (survive restarts /
+  support multiple workers).
+- [ ] Persist investigation/job state outside process memory.
 
 ## Future features
 
-- [ ] **Parallel agent execution** — agents at the same DAG depth could run concurrently.
-- [ ] **Additional skills**: `web_search`, `mitre_lookup` (resolves technique IDs to canonical names).
-- [ ] **Multiple meshes** — app supports more than one mesh, selectable from the UI.
-- [ ] **`SplunkSecureSettingsStore`** — wire to Splunk Passwords API for production credential storage.
+- [ ] **Discovery tools** for the Threat Hunter (index / sourcetype / field
+  summaries) so it explores instead of guessing.
+- [ ] **Search-optimizer sub-agent** that refines SPL + viz hint before
+  execution.
+- [ ] **Re-enable specialized personas** as additional primary agents where they
+  add value.
+- [ ] **`SplunkSecureSettingsStore`** wired to the Passwords API for production.
+- [ ] **Multiple meshes** selectable from the UI.
 
 ## Packaging
 
-- [ ] Package the Python backend as a Splunk Custom REST Handler.
+- [ ] Package the Python backend for deployment alongside the Splunk app.
 - [ ] Build a `.tar.gz` Splunk app via `yarn link:app` + Splunk packaging.
-- [ ] CI: GitHub Actions for `yarn build`, Python imports, basic smoke tests.
+- [ ] CI: `yarn build`, `pytest`, `yarn test`, lint.
 
-## Tests
+## Docs
 
-- [ ] `ConfReader` unit tests — file parser, default merge, line continuation.
-- [ ] `splunk_search.extract_spl_blocks` unit tests — viz hint parsing, bare fences, content validation.
-- [ ] `LLMAgent` unit tests with a mock LLM provider.
-- [ ] Frontend component tests for `InvestigationReport` and `ArtifactRenderer`.
+- [ ] Keep `docs/legacy/HISTORY.md` appended as major architecture shifts land.

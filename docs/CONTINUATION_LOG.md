@@ -1,290 +1,71 @@
 # Splunk Agent Mesh — Continuation Log
 
-Every coding session must append an entry to this file so the next agent session can resume without losing context.
+This file orients the next working session on the **current** state. The full
+historical narrative (how the project evolved) lives in
+`docs/legacy/HISTORY.md`. Append a brief entry here when the current-state
+picture changes materially.
 
 ---
 
-## Session 1 — 2026-05-18
+## Current state — 2026-06-01
 
-### What Changed
+### What this is
+An agentic SOC investigation copilot. One user-visible **Threat Hunter** agent
+investigates an alert by returning a structured JSON **event stream**; a harness
+validates each response, runs one action per turn against live Splunk, and
+streams results to a console-style UI.
 
-**Foundation session** — built the full project scaffold from an empty Splunk Create monorepo.
+### Architecture in one paragraph
+`agents.conf` → `ConfReader` → `Orchestrator` runs the primary agent
+(`spl_hunter`, "Threat Hunter", `agent_mode = agentic`) through
+`AgenticLLMAgent`. The agent emits `{events:[...]}`; `agents/events.py`
+validates it. The harness executes the last `splunk_search` (live Splunk via the
+analyst's delegated session) or `handoff` (the `executive_brief` "Reporting"
+sub-agent), feeds results back, and ends on `final`. Events + artifacts stream
+over SSE; the browser fetches search rows directly from Splunk Web. See
+`docs/ARCHITECTURE.md`.
 
-#### Documentation created
-- `docs/PROJECT_BRIEF.md` — project overview, MVP scope, demo experience
-- `docs/ARCHITECTURE.md` — full architecture with Mermaid data flow diagram
-- `docs/AGENT_DESIGN.md` — 7-agent design with purpose/inputs/outputs/prompt contracts
-- `docs/SECURE_SETTINGS.md` — credential storage design and security requirements
-- `docs/DEMO_STORYBOARD.md` — 3-minute hackathon demo script
-- `docs/DECISIONS.md` — 5 ADR-style architecture decisions
-- `docs/TODO.md` — full backlog organized by priority
-- `docs/CONTINUATION_LOG.md` — this file
+### Where things live
+- Event schema/validator: `server/agent_mesh/agents/events.py`
+- Harness loop: `server/agent_mesh/agents/agentic_llm_agent.py`
+- Orchestrator (primary/subagent split): `server/agent_mesh/agents/orchestrator.py`
+- Search execution: `server/agent_mesh/tools/splunk_search.py`, `splunk_client.py`
+- Auth / streaming: `app.py`, `request_context.py`, `stream_tokens.py`,
+  and the Splunk bridge under `packages/agent-mesh/.../bin/agent_mesh_bridge.py`
+- UI: `packages/agent-mesh-ui/src/components/{InvestigationReport,EventRenderer,ArtifactRenderer}.tsx`,
+  `pages/InvestigationPage.tsx`, `services/{apiClient,splunkWeb,splunkSearchResults}.ts`
+- Mesh definition: `packages/agent-mesh/src/main/resources/splunk/default/agents.conf`
 
-#### Frontend (packages/investigations/src/)
-- `types.ts` — all shared TypeScript types (InvestigationResult, AgentStep, etc.)
-- `Investigations.tsx` — replaced scaffold placeholder with tabbed app root (Investigation / Settings / About)
-- `InvestigationsStyles.ts` — updated styled-components for new layout
-- `index.ts` — updated exports
-- `pages/InvestigationPage.tsx` — full investigation form + result display
-- `pages/SettingsPage.tsx` — LLM settings with secure credential messaging
-- `pages/AboutPage.tsx` — about/documentation page
-- `components/AgentRunPanel.tsx` — agent progress list with status icons
-- `components/InvestigationSummary.tsx` — severity badge, confidence, entity list
-- `components/IncidentTimeline.tsx` — chronological timeline with color-coded severity dots
-- `components/EvidenceTable.tsx` — tabular evidence with source, field, value, interpretation
-- `components/EntityGraphPlaceholder.tsx` — entity tag display (graph coming in v2)
-- `components/DetectionRecommendation.tsx` — SPL code block with copy button
-- `components/ResponsePlan.tsx` — response actions with approval requirements
-- `services/apiClient.ts` — HTTP client for all backend calls
-- `demo/demoData.ts` — static demo agent steps and full investigation result
-- `tests/Investigations.unit.tsx` — updated tests for new component
+### Shipping mesh
+- `spl_hunter` — primary, agentic, `skills = splunk_search`, `max_iterations = 14`.
+- `executive_brief` — `agent_role = subagent` ("Reporting"), invoked via handoff.
+- `triage`, `timeline`, `blast_radius`, `detection_gap`, `response` — `enabled = 0`.
 
-#### Backend (server/agent_mesh/)
-- `app.py` — FastAPI app with CORS, all 5 API endpoints
-- `config.py` — runtime config from env vars
-- `security.py` — key redaction, input validation helpers
-- `settings_store.py` — DevSettingsStore + SplunkSecureSettingsStore (stub) abstraction
-- `splunk_client.py` — SplunkClient (stub) + DemoSplunkClient (synthetic events)
-- `llm/base.py` — LLMProvider interface
-- `llm/anthropic_provider.py` — Anthropic Claude adapter
-- `llm/openai_compatible_provider.py` — OpenAI-compatible adapter
-- `llm/openrouter_provider.py` — OpenRouter adapter (wraps OpenAI-compatible)
-- `agents/orchestrator.py` — sequential agent runner
-- `agents/triage_agent.py` — entity extraction + severity classification
-- `agents/spl_hunter_agent.py` — SPL template generation + search
-- `agents/timeline_agent.py` — event correlation into timeline
-- `agents/blast_radius_agent.py` — additional entity identification
-- `agents/detection_gap_agent.py` — detection rule generation
-- `agents/response_agent.py` — response plan generation
-- `agents/executive_brief_agent.py` — MITRE mapping + confidence scoring + summary
-- `demo/demo_case.py` — static demo investigation result
-- `demo/synthetic_events.py` — synthetic event data for each data source
-- `requirements.txt` — Python dependencies
+### How to run / test
+```bash
+# backend
+cd server && pip install -r requirements.txt
+uvicorn agent_mesh.app:app --reload --port 8765
+python -m pytest tests/
 
-#### Splunk Resources
-- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/endpoint_events.csv`
-- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/dns_events.csv`
-- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/auth_events.csv`
-- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/proxy_events.csv`
-- `packages/splunk-agent-mesh/src/main/resources/splunk/lookups/firewall_events.csv`
-- `packages/splunk-agent-mesh/src/main/resources/splunk/default/data/ui/nav/default.xml` (updated label)
-
-#### Reference SPL and Config
-- `splunk/spl/suspicious_powershell.spl`
-- `splunk/spl/rare_domain_after_execution.spl`
-- `splunk/spl/finance_file_access.spl`
-- `splunk/spl/outbound_transfer.spl`
-- `splunk/spl/blast_radius_hunt.spl`
-- `splunk/config_examples/indexes.conf`
-- `splunk/config_examples/props.conf`
-- `splunk/config_examples/transforms.conf`
-
-#### Other
-- `README.md` — full rewrite with setup, demo, architecture, limitations, next steps
-- `.gitignore` — added Splunk Agent Mesh secret/generated file patterns
-
-### Commands Run
-
-- No build commands run (dependencies not installed in this environment).
-- File creation only.
-
-### Current Runnable Status
-
-**NOT YET BUILT** — dependencies not installed, build not run.
-
-Expected build status after `yarn install && yarn build`:
-- TypeScript compilation: likely 1-3 minor issues (import types, TextArea event handler signatures)
-- Runtime: should render the tabbed app in Splunk Web once built and deployed
-
-Expected backend status after `pip install -r requirements.txt`:
-- FastAPI app should start cleanly
-- Demo endpoint: `POST /api/v1/investigations/run` with `{"demo": true}` should return DEMO_RESULT
-- Real investigation: works if `AGENT_MESH_API_KEY` and `AGENT_MESH_DEV_MODE=1` are set
-
-### Known Broken Things
-
-1. **TypeScript**: `TextArea` and `Text` component event handler types may need adjustment. Splunk UI Toolkit event signatures vary between `@splunk/react-ui` versions. Run `yarn build` to find exact errors.
-2. **TabLayout**: The `TabLayout` component's `onChange` event signature may differ in the installed version of `@splunk/react-ui`. If it fails, replace with a simple `<button>` tab implementation.
-3. **ColumnLayout**: Check that `ColumnLayout.Row` and `ColumnLayout.Column` are the correct sub-component names for the installed version.
-4. **SplunkSecureSettingsStore**: Stub — not functional. Uses DevSettingsStore by default.
-5. **Real Splunk searches**: Not connected. DemoSplunkClient used for demo mode.
-
-### Suggested Next Steps for Session 2
-
-1. Run `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn agent_mesh.app:app --reload`
-2. Smoke test: `curl -X POST http://localhost:8000/api/v1/investigations/run -d '{"description":"test","demo":true}' -H 'Content-Type: application/json'`
-3. Link and deploy to local Splunk: `yarn workspace @splunk/agent-mesh run link:app`
-4. Wire SplunkSecureSettingsStore to real Splunk Passwords API
-5. Test the Settings page round-trip (save → test connection)
-
----
-
-## Session 1 (continued) — 2026-05-18
-
-### What Changed
-
-TypeScript compilation errors fixed after running `yarn install && yarn build`:
-
-**Root causes:**
-1. `variables.fontSizeMedium` does not exist in `@splunk/themes` — replaced with `fontSizeLarge` across all 9 affected files
-2. `TabLayout.onChange` passes `activePanelId?: string` (optional) — fixed handler to guard for undefined; also removed conflicting `defaultActivePanelId` (can't use both controlled and uncontrolled props)
-3. `Text` and `TextArea` use Splunk's own `onChange` signature (first arg is a union event type) — changed all handlers to `(_e: unknown, { value }: { value: string }) =>`
-4. `Select.onChange` passes `value: string | number | boolean` — updated handler to `String(value)`
-5. `variables.spacingMedium` etc. are `VariableInterpolation` functions, not strings — cannot be used in `style={{}}` inline objects; converted affected sections to styled-components
-
-**Files modified:**
-- `src/components/AgentRunPanel.tsx`
-- `src/components/DetectionRecommendation.tsx`
-- `src/components/EntityGraphPlaceholder.tsx`
-- `src/components/EvidenceTable.tsx`
-- `src/components/IncidentTimeline.tsx`
-- `src/components/InvestigationSummary.tsx`
-- `src/components/ResponsePlan.tsx`
-- `src/Investigations.tsx`
-- `src/pages/AboutPage.tsx`
-- `src/pages/InvestigationPage.tsx`
-- `src/pages/SettingsPage.tsx`
-
-### Commands Run
-
+# frontend
+yarn install && yarn build
+yarn workspace @splunk/agent-mesh-ui run test
+yarn workspace @splunk/agent-mesh-ui run types:build
+yarn workspace @splunk/agent-mesh-ui run lint
 ```
-yarn install && yarn build    # installed deps, fixed 22 TS errors
-yarn workspace @splunk/agent-mesh-ui run types:build   # 0 errors
-yarn build    # both packages compile cleanly
-```
+Demo (no LLM/Splunk): `POST /api/v1/investigations/run` with `{"demo": true}` —
+returns a canned Threat Hunter event stream + one artifact.
 
-### Current Runnable Status
+### Status / known gaps
+- Tests green at last check: backend 22, frontend 16.
+- Single-process assumptions: in-memory job store; per-process SSE stream-token
+  secret (tokens don't survive a restart). Fine for the laptop POC.
+- `SplunkSecureSettingsStore` still stubbed (DevSettingsStore active).
+- `AgentTabsPanel` / `legacy/` components are unused and slated for removal.
 
-**FRONTEND BUILDS CLEAN** — `yarn build` exits 0 with only webpack size warnings (bundle is 6.38 MB, normal for Splunk UI Toolkit). TypeScript: 0 errors.
-
-**BACKEND** — not yet run in this environment. Expected to start cleanly.
-
-### Known Broken Things
-
-1. **Backend not started** — run `uvicorn agent_mesh.app:app --reload` from `server/`
-2. **SplunkSecureSettingsStore** still a stub
-3. **Real Splunk searches** not connected
-4. **`TextArea` no placeholder** — Splunk's TextArea doesn't support `placeholder`; removed from InvestigationPage. Consider adding a helper text label instead.
-
-### Suggested Next Steps for Session 3
-
-1. Start backend: `cd server && pip install fastapi uvicorn pydantic httpx python-dotenv && uvicorn agent_mesh.app:app --reload --port 8765`
-2. Smoke test demo endpoint
-3. Deploy to Splunk: `yarn workspace @splunk/agent-mesh run link:app`
-4. Wire SplunkSecureSettingsStore to Splunk Passwords API
-5. Test full Settings → Test Connection → Run Investigation round-trip
-
----
-
-## Session 1 (continued) — code review fixes
-
-### What Changed
-
-Code-review pass identified 18 issues. Applied 6 quick fixes:
-
-1. **API base URL collision** — `apiClient.ts` default changed from `:8000` (collides with Splunk Web) to `:8765`. Backend now must be started on port 8765.
-2. **`SplunkSecureSettingsStore` no longer auto-selected** — gated behind `AGENT_MESH_USE_SPLUNK_STORE=1` flag so a stray `SPLUNK_TOKEN` env var doesn't break every settings call with `NotImplementedError`.
-3. **SPL injection guards** — added Pydantic field validators on `host`/`user`/`time_range` in `InvestigationRequest`. Pattern: `^[A-Za-z0-9][A-Za-z0-9._\-]{0,63}$` for entities.
-4. **`description` length cap** — `max_length=10_000` to prevent DoS.
-5. **Demo result deep copy** — `Orchestrator.run` now returns `copy.deepcopy(DEMO_RESULT)` so mutation of one response doesn't poison future calls.
-6. **`_safe_int` helper** in ExecutiveBriefAgent for `bytes_out` and `first_seen_domain_days`. Handles `None`, empty string, and non-numeric strings.
-
-### Validation
-
-All 6 fixes were tested:
-- Malicious host `"* OR 1=1` → rejected by Pydantic
-- 11k-char description → rejected
-- Empty host/user → normalized to None
-- Demo deep copy: mutating r1 doesn't affect r2
-- `_safe_int(None|''|'foo')` → 0
-- `USE_SPLUNK_STORE=0` + `SPLUNK_TOKEN` set → DevSettingsStore (was: stub crash)
-- TypeScript build: 0 errors
-
-### Remaining from Code Review (Not Yet Fixed)
-
-- Triage entity regex is too greedy — extracts wrong tokens from prose
-- Demo button uses unnecessary setTimeout hack
-- `apiClient` has no fetch timeout
-- Duplicate demo data between frontend and backend (intentional fallback, but drift risk)
-- Splunk-deployed app currently can't reach `localhost:8765` from a remote browser — needs proxy or different deployment story
-- Unit tests in `Investigations.unit.tsx` are likely brittle
-
----
-
-## Session 2 — 2026-05-21 (project pivot)
-
-### What Changed
-
-Major repositioning: from a SOC-specific copilot to a general agentic platform
-on Splunk. The SOC mesh becomes the first example mesh.
-
-Three commits on branch `feature/agentic-platform-concept`:
-
-1. **`c5c4e16` — Rename to Splunk Agent Mesh.**
-   - Directory moves: `server/sentinel_mesh/` → `server/agent_mesh/`,
-     `packages/ai-investigator/` → `packages/agent-mesh/`,
-     `packages/investigations/` → `packages/agent-mesh-ui/`.
-   - Yarn workspaces: `@splunk/agent-mesh`, `@splunk/agent-mesh-ui`.
-   - Splunk app id: `splunk-agent-mesh`.
-   - Python package: `agent_mesh`.
-   - Env vars: `SENTINEL_MESH_*` → `AGENT_MESH_*`.
-
-2. **`2d04b17` — Phase A: backend pivot to conf-driven agents.**
-   - New `server/agent_mesh/conf_reader.py` (`SplunkRestConfReader` primary,
-     `FileConfReader` fallback).
-   - New `server/agent_mesh/agents/agent_config.py` (AgentConfig dataclass).
-   - New `server/agent_mesh/agents/llm_agent.py` (generic LLMAgent — only
-     agent class in the codebase now).
-   - Rewrote `orchestrator.py` around the ConfReader + LLMAgent loop. Agents
-     are independent — each sees only the original request.
-   - New `agents.conf` (default + 7 stanzas) and `README/agents.conf.spec`
-     under the Splunk app.
-   - Response shape change: `{ id, status, agent_order, agents:
-     Record<id, AgentOutput> }`.
-   - New endpoint `GET /api/v1/agents`.
-   - Rewrote `demo/demo_case.py` to per-agent canned markdown.
-   - Deleted all seven per-agent Python classes. Heuristics archived to
-     `docs/legacy/heuristics.md`.
-
-3. **`8b5976f` — Phase B: frontend pivot to per-agent markdown tabs.**
-   - New components: `MarkdownView` (react-markdown + remark-gfm +
-     rehype-sanitize, with a pluggable code-block renderer registry),
-     `AgentTabsPanel`, `AgentStatusBadge`.
-   - Updated `types.ts` with new `AgentDescriptor`, `AgentOutput`, and a
-     reshaped `InvestigationResult`. Legacy types kept for archived
-     components.
-   - Updated `apiClient.ts` to add `getAgents()` and `AbortController`
-     timeouts (30s default, 120s for investigation runs, 5s for health).
-   - Refactored `InvestigationPage`: input card on top, `AgentTabsPanel`
-     below.
-   - Moved 7 legacy components to `components/legacy/`. `tsconfig.json`
-     excludes that subtree.
-   - Rewrote `demoData.ts` to new shape.
-   - Bundle size: 6.38 MiB → 8.23 MiB after adding markdown deps.
-
-### Validated
-- ConfReader (file fallback path) loads all 7 stanzas with non-empty prompts.
-- `GET /api/v1/agents` returns the descriptor list.
-- `POST /api/v1/investigations/run` (demo) returns the new shape; all 7
-  agents populated.
-- `POST /api/v1/investigations/run` without an LLM gracefully marks each
-  agent `status=error` with a clear message.
-- `yarn build` clean (only standard webpack size warnings).
-
-### Known Not-Yet-Done
-
-- LLM providers haven't been live-tested against real API keys.
-- `SplunkRestConfReader` hasn't been live-tested against Splunk Enterprise.
-- `SplunkSecureSettingsStore` is still a stub.
-- `SplunkClient` is still a stub.
-- Splunk app needs to be re-linked under the new name and Splunk restarted
-  for the renamed app to appear.
-
-### Suggested Next Steps for Session 3
-
-1. Live-validate `SplunkRestConfReader` against a running Splunk Enterprise
-   instance.
-2. Install `anthropic` and `openai` and run `POST /api/v1/settings/test`
-   end-to-end against each provider.
-3. Wire `SplunkSecureSettingsStore` to the Passwords API.
-4. Begin Skills system design (see `docs/TODO.md`).
+### Conventions
+- Work on a feature branch and merge to `main` via PR (do not commit to `main`
+  directly).
+- Keep docs current: this file for current-state, `docs/legacy/HISTORY.md` for
+  the evolution narrative, `docs/DECISIONS.md` for ADRs.

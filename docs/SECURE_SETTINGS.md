@@ -1,99 +1,113 @@
-# Splunk Agent Mesh — Secure Settings
+# Splunk Agent Mesh — Secure Settings & Auth
 
-## How LLM Provider Settings Are Stored
+This covers two concerns: how **LLM provider settings/keys** are stored, and how
+**Splunk access** is authenticated for live investigations.
 
-Non-secret settings (provider name, base URL, model name) are persisted to a
-local JSON file alongside the backend (`server/.agent_mesh_settings.json`,
-gitignored). They aren't secrets so they don't need a Splunk round-trip.
+---
 
-## How API Keys Are Stored
+## LLM provider settings
+
+Non-secret settings (provider, base URL, model) persist to a local JSON file
+beside the backend (`server/.agent_mesh_settings.json`, gitignored).
 
 API keys go through a `SettingsStore` abstraction:
 
 ```
 SettingsStore (abstract)
-├── SplunkSecureSettingsStore   ← used when SPLUNK_TOKEN is set
+├── SplunkSecureSettingsStore   ← Splunk Passwords API (used when SPLUNK_TOKEN is set)
 └── DevSettingsStore            ← fallback when SPLUNK_TOKEN is absent
 ```
 
-The factory `get_settings_store()` activates `SplunkSecureSettingsStore`
-whenever `SPLUNK_TOKEN` is set. To force the dev store even with a token
-present (offline testing), set `AGENT_MESH_USE_SPLUNK_STORE=0`.
+`get_settings_store()` activates `SplunkSecureSettingsStore` whenever
+`SPLUNK_TOKEN` is set. Force the dev store with `AGENT_MESH_USE_SPLUNK_STORE=0`.
+(`SplunkSecureSettingsStore` is currently stubbed; `DevSettingsStore` is used in
+the active deployment.)
 
-### SplunkSecureSettingsStore
+### SplunkSecureSettingsStore (design)
 
-Uses Splunk's REST Passwords API to store and retrieve the LLM key:
-
-| Operation | Endpoint |
-|---|---|
-| Create | `POST /servicesNS/nobody/splunk-agent-mesh/storage/passwords` (form: `name=llm_api_key&realm=agent_mesh&password=...`) |
-| Update | `POST /servicesNS/nobody/splunk-agent-mesh/storage/passwords/agent_mesh:llm_api_key:` (form: `password=...`) |
-| Read   | `GET  /servicesNS/nobody/splunk-agent-mesh/storage/passwords/agent_mesh:llm_api_key:?output_mode=json` |
-| Delete | `DELETE /servicesNS/nobody/splunk-agent-mesh/storage/passwords/agent_mesh:llm_api_key:` |
-
-Authentication: `Authorization: Bearer <SPLUNK_TOKEN>`. The token is a Splunk
-admin token (create via Splunk Web: **Settings → Tokens**) with the
-capabilities listed below.
-
-`store_api_key()` tries update first and falls back to create on 404, so the
-same call handles both new entries and overwrites.
+Stores the LLM key via the Passwords API
+(`/servicesNS/nobody/splunk-agent-mesh/storage/passwords`, realm
+`agent_mesh`, name `llm_api_key`); `store_api_key()` tries update then falls
+back to create. Auth: `Authorization: Bearer <SPLUNK_TOKEN>`.
 
 ### DevSettingsStore
 
-Reads from the `AGENT_MESH_API_KEY` environment variable. Refuses to store a
-plaintext key to disk unless `AGENT_MESH_DEV_MODE=1` is explicitly set.
+Reads `AGENT_MESH_API_KEY`. Refuses to write a plaintext key to disk unless
+`AGENT_MESH_DEV_MODE=1`.
 
-## Required Splunk Capabilities
+---
 
-For the backend's `SPLUNK_TOKEN`:
+## Splunk authentication for investigations
 
-- `list_storage_passwords` — read stored credentials
-- `edit_storage_passwords` — write/delete credentials
-- `rest_properties_get` / `rest_properties_set` — read/write conf via REST (for `agents.conf` access)
+Live investigations use the **analyst's own Splunk session**, not a shared admin
+token.
 
-The simplest path is to issue the token to an `admin` role user.
+1. In Splunk Web, the React app calls the `agent_mesh_bridge` custom REST
+   endpoint. Splunk authenticates the request, and the bridge forwards it to
+   uvicorn with `X-Splunk-User` (username) and `X-Splunk-Token` (session key).
+2. `request_context.context_from_request` reads those headers and sets the auth
+   scheme to `Splunk` (vs. `Bearer` for a service token).
+3. Before a live run, the backend validates the session via
+   `/services/authentication/current-context` and confirms the returned username
+   matches the requesting user — otherwise the request is rejected (401/403).
+4. `SplunkClient` runs all searches with that session key.
 
-## How the Settings Page Works
+### Service-token fallback
 
-1. User opens **Settings** in Splunk Agent Mesh.
-2. UI calls `GET /api/v1/settings` — response includes `storage_backend`
-   so the UI can tell the user whether Splunk Passwords or Dev mode is active.
-3. User picks provider, model, base URL (if custom), and pastes API key.
-4. User clicks **Save**.
-5. UI calls `POST /api/v1/settings` with all fields.
-6. Backend validates inputs (Pydantic validators on provider/model/base_url).
-7. Backend persists provider settings to the local JSON file.
-8. Backend stores the API key via the active `SettingsStore`.
-9. Backend returns `{ "saved": true, "api_key_configured": true }`.
-10. UI shows the success message; the API key field clears.
+`SPLUNK_TOKEN` is used for conf reads and the Passwords store, and can act as a
+**search fallback** only when explicitly enabled with
+`AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK=1` and no delegated session is
+present. By default, a live run with no delegated session is rejected.
 
-## What Must Never Be Logged
+### SSE stream tokens
 
-- API keys (full or partial, except redacted form via `security.redact_key`)
-- Splunk session keys or admin tokens
-- Any `Authorization` header values
+`EventSource` cannot send auth headers, so `/investigations/start` returns a
+short-lived HMAC-signed `stream_token` (`stream_tokens.py`, default TTL 4h, set
+via `AGENT_MESH_STREAM_TOKEN_TTL_SECONDS`). `/stream` rejects missing/invalid
+tokens. The signing secret is per-process — see the note in `docs/ARCHITECTURE.md`.
 
-## Redaction Requirements
+### Result-row minimization
 
-`security.redact_key(key)` returns the first 4 chars plus `****`. Used only in
-log messages when confirming a key was received. Never in HTTP responses;
-responses return `api_key_configured: bool` only.
+The JSON API returns search artifacts **without rows** (`public_artifact` /
+`public_investigation`); the browser fetches preview and final rows itself from
+Splunk Web's authenticated `splunkd/__raw` proxy. Demo artifacts keep their rows.
 
-## Test Connection Behavior
+### Trust boundary
 
-`POST /api/v1/settings/test`:
+The bridge trusts `X-Splunk-User` / `X-Splunk-Token` because they originate from
+Splunk Web over loopback. **uvicorn must not be exposed beyond loopback** — any
+client that can set those headers would be trusted.
 
-1. Retrieves the stored API key from the active `SettingsStore`.
-2. Calls `LLMProvider.test_connection()` (sends a minimal LLM request).
-3. Returns `{ "success": true, "latency_ms": 123, "model": "..." }` or
-   `{ "success": false, "error": "..." }`.
-4. The API key is never included in the response.
+---
 
-## Clear Credentials
+## Required Splunk capabilities
 
-`DELETE /api/v1/settings/credentials`:
+For the backend's `SPLUNK_TOKEN` (conf + Passwords store):
 
-- Calls `SettingsStore.clear_api_key()`.
-- Does not clear provider/model settings — the user may want to re-enter a key
-  without re-selecting the provider.
-- Returns `{ "cleared": true }`.
+- `list_storage_passwords`, `edit_storage_passwords` — credential storage
+- `rest_properties_get` / `rest_properties_set` — read conf via REST
+
+Delegated analyst sessions carry whatever search capabilities that user already
+has — searches run with least privilege, as that analyst.
+
+---
+
+## Settings page flow
+
+1. **Settings** → `GET /api/v1/settings` (includes `storage_backend`).
+2. User picks provider/model/base URL and pastes an API key → **Save**.
+3. `POST /api/v1/settings` validates (Pydantic), persists non-secret settings to
+   JSON, stores the key via the active `SettingsStore`, returns
+   `{ saved: true, api_key_configured: true }`.
+4. `POST /api/v1/settings/test` retrieves the key and calls
+   `LLMProvider.test_connection()`.
+5. `DELETE /api/v1/settings/credentials` clears the key (keeps provider settings).
+
+## What must never be logged
+
+- API keys (except the redacted form from `security.redact_key`, first 4 chars +
+  `****`).
+- Splunk session keys or admin tokens; any `Authorization` header values.
+
+`AGENT_MESH_LOG_LLM=1` logs full LLM requests/responses for debugging — keep it
+off outside local debugging since prompts/results may contain sensitive data.

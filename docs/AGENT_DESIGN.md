@@ -1,17 +1,12 @@
 # Splunk Agent Mesh — Agent Design
 
-Agents are configuration, not code. Each agent is a stanza in `agents.conf`.
-This document specifies the stanza format and documents the seven SOC-mesh
-agents that ship as the default mesh.
+Agents are configuration, not code. Each agent is an `[agent:<id>]` stanza in
+`agents.conf`. This document specifies the stanza format, the Threat Hunter's
+**structured event contract**, and the agents that ship today.
 
 ---
 
-## The Agent Stanza
-
-Each `[agent:<id>]` stanza in `agents.conf` becomes one section in the
-investigation report and one node in the orchestrator's execution DAG. The
-runtime ships one generic `LLMAgent` class — all per-agent behavior lives in
-the stanza.
+## The agent stanza
 
 ```ini
 [default]
@@ -21,160 +16,155 @@ temperature = 0.2
 max_tokens = 2048
 output_format = markdown
 
-[agent:my_agent]
-display_name = My Agent
-description = One-line description shown in the UI.
-order = 100
+[agent:spl_hunter]
+display_name = Threat Hunter
+description = Investigates incidents by iteratively searching Splunk and reports findings.
+agent_mode = agentic
+agent_role = primary
 skills = splunk_search
-depends_on = triage
-system_prompt = You are <role>. Given <input description>, respond in <output format>. \
-  ...continued on multiple lines via trailing backslash.
+max_iterations = 14
+max_tokens = 4096
+system_prompt = You are the Threat Hunter ... respond with VALID JSON ONLY ...
 ```
 
 ### Fields
 
 | Field | Required | Type | Default | Notes |
 |---|---|---|---|---|
-| `system_prompt` | yes | string | — | The LLM system prompt. Multi-line via `\` continuation. |
-| `display_name` | no | string | id | Section heading in the report. |
+| `system_prompt` | yes | string | — | LLM system prompt. Multi-line via trailing `\`. |
+| `display_name` | no | string | id | Name shown in the report. |
 | `description` | no | string | "" | Shown in agent listings. |
-| `order` | no | int | 100 | Execution order. Lower runs first. Ties broken by id. |
-| `enabled` | no | bool | 1 | Disabled agents are excluded entirely. |
-| `model` | no | string | (from default) | LLM model identifier. |
-| `temperature` | no | float | (from default) | Sampling temperature. |
-| `max_tokens` | no | int | 2048 | Cap on completion length. |
-| `output_format` | no | string | markdown | Reserved; only `markdown` honored currently. |
-| `skills` | no | csv | "" | Named skills the agent may invoke. Currently supported: `splunk_search`. |
-| `depends_on` | no | csv | "" | Agent ids that must complete before this agent runs. Dependent agents receive prior outputs as context. |
+| `order` | no | int | 100 | Execution order (lower first; ties by id). |
+| `enabled` | no | bool | 1 | Disabled stanzas are excluded entirely. |
+| `agent_mode` | no | string | single_shot | `agentic` (harness event loop) or `single_shot`. |
+| `agent_role` | no | string | primary | `primary` (user-visible) or `subagent` (delegated). |
+| `max_iterations` | no | int | 10 | Safety cap on agentic loop turns. |
+| `model` | no | string | (default) | LLM model identifier. |
+| `temperature` | no | float | (default) | Sampling temperature. |
+| `max_tokens` | no | int | 2048 | Completion length cap. |
+| `skills` | no | csv | "" | Named skills. Currently supported: `splunk_search`. |
+| `depends_on` | no | csv | "" | Single-shot DAG edges; ignored by agentic agents. |
 
-See `packages/agent-mesh/src/main/resources/splunk/README/agents.conf.spec` for the
-canonical reference.
+See `packages/agent-mesh/src/main/resources/splunk/README/agents.conf.spec` for
+the canonical Splunk spec.
 
 ### Input contract
 
 Every agent receives the original user request:
 
 ```
-description: <user-provided free text>
-host: <user-provided, optional>
-user: <user-provided, optional>
-alert_name: <user-provided, optional>
-time_range: <user-provided, optional>
+description: <free text>
+host:        <optional>
+user:        <optional>
+alert_name:  <optional>
+time_range:  <optional>
 ```
 
-Agents with `depends_on` also receive a `dependency_context` block containing
-the markdown output and artifact metadata from their upstream agents.
+---
 
-### Output contract
+## The Threat Hunter response contract
 
-Agents emit GitHub-flavored markdown. The UI renders with `react-markdown` +
-`remark-gfm` + `rehype-sanitize`.
+A `primary` agent with `agent_mode = agentic` (the Threat Hunter) **must
+respond with valid JSON only** — no markdown, no prose, no code fences. The
+top-level value is an object with a non-empty `events` array; each event is:
 
-Agents with `skills = splunk_search` should emit fenced SPL blocks using
-visualization-hinted fence tags:
+```json
+{ "type": "...", "title": "string", "text": "string", "payload": { } }
+```
 
-| Fence tag | Visualization | Use when |
+`type` is one of `narration`, `splunk_search`, `result_summary`, `finding`,
+`handoff`, `final`. `payload` is always an object (`{}` when empty).
+
+| Type | When to use | Payload |
 |---|---|---|
-| ` ```spl_column ` | Column chart | `timechart count` or time-bucketed aggregations |
-| ` ```spl_line ` | Line chart | Time-series trends |
-| ` ```spl_bar ` | Bar chart | `stats count by ...` categorical comparisons |
-| ` ```spl_pie ` | Pie chart | Proportional breakdowns |
-| ` ```spl_single ` | Single value | One numeric metric |
-| ` ```spl_table ` | Data table | Tabular listings, detection rules |
-| ` ```spl ` | Auto-inferred | Fallback (heuristic picks based on data shape) |
+| `narration` | Explain the current step at a high level | `{}` |
+| `splunk_search` | Propose/execute one SPL query | `query` (SPL), `purpose`, `type` (viz hint) |
+| `result_summary` | Summarize search or sub-agent results | `{}` |
+| `finding` | A security-relevant observation | structured fields, e.g. `user`, `src_ip`, `confidence` |
+| `handoff` | Delegate to a sub-agent | `{ "sub_agent": "executive_brief", "task": "summarize_findings" }` |
+| `final` | The closing answer | `summary`, `recommended_actions` (array) |
 
-The orchestrator extracts these blocks post-completion, executes them against
-Splunk, and attaches the results as structured artifacts rendered inline in the
-report.
+### Example response
 
----
+```json
+{
+  "events": [
+    { "type": "narration", "title": "Starting investigation",
+      "text": "I'll confirm the encoded PowerShell, then bound the blast radius.",
+      "payload": {} },
+    { "type": "splunk_search", "title": "Encoded PowerShell on the host",
+      "text": "Looking for powershell.exe launched with an encoded command.",
+      "payload": {
+        "query": "index=endpoint host=FIN-LAPTOP-22 process_name=powershell.exe (\"-enc\" OR \"-EncodedCommand\") | timechart span=1m count",
+        "purpose": "Confirm execution and timing",
+        "type": "timechart"
+      } }
+  ]
+}
+```
 
-## Default SOC mesh
+### Loop behavior (harness rules)
 
-The default `agents.conf` ships these seven agents.
+- Emit **at most one action event** (`splunk_search` or `handoff`) per response,
+  and make it the **last** event.
+- To run a search: end with a `splunk_search` event. The harness executes it,
+  appends the results, and calls the agent again to interpret them.
+- To produce a report: end with a `handoff` event (`sub_agent =
+  executive_brief`). The harness runs the reporting sub-agent and returns its
+  output; the agent then emits a `result_summary` and a `final`.
+- Finish with a `final` event and request no further action.
+- On `"Remember to always respond with json."`, resend as valid JSON.
 
-### `agent:triage` (order 10)
+### Visualization hints
 
-**Role**: SOC triage analyst.
-**Skills**: none
-**Dependencies**: none
-
-**Asked to produce**: a Severity classification, an Entities list, and a
-Reasoning paragraph. Conservative on Critical.
-
-### `agent:spl_hunter` (order 20)
-
-**Role**: SPL author.
-**Skills**: `splunk_search`
-**Dependencies**: none
-
-**Asked to produce**: 2-4 candidate SPL searches in visualization-hinted fenced
-blocks, each with a short heading explaining what the search finds. Uses
-`spl_column` for timecharts, `spl_table` for listings, etc. Prefers common
-Splunk indexes; does not invent custom indexes.
-
-### `agent:timeline` (order 30)
-
-**Role**: Timeline builder.
-**Skills**: none
-**Dependencies**: `spl_hunter`
-
-**Asked to produce**: a markdown table of `Time | Event` rows. Uses relative
-times (T+0, T+1m, ...) when exact times aren't available; refuses to fabricate
-precise timestamps.
-
-### `agent:blast_radius` (order 40)
-
-**Role**: Lateral-movement / exposure analyst.
-**Skills**: none
-**Dependencies**: `triage`, `spl_hunter`
-
-**Asked to produce**: a Directly affected list, Recommended pivot searches,
-and a Why this matters explanation. Focuses on credential reuse, lateral
-movement, and shared infrastructure.
-
-### `agent:detection_gap` (order 50)
-
-**Role**: Detection engineer.
-**Skills**: `splunk_search`
-**Dependencies**: none
-
-**Asked to produce**: one Splunk detection rule (title, fenced `spl_table` block,
-severity, MITRE techniques, and tuning notes). Behavioral patterns are
-preferred over signature matches.
-
-### `agent:response` (order 60)
-
-**Role**: Incident response coordinator.
-**Skills**: none
-**Dependencies**: `triage`, `blast_radius`
-
-**Asked to produce**: a numbered list of 3-6 prioritized actions, each with
-an `_Approval required: <role>._` line. Opens with a blockquote reminder that
-no action runs without approval. Never recommends irreversible destructive
-actions without explicit risk notes.
-
-### `agent:executive_brief` (order 70)
-
-**Role**: Executive communicator.
-**Skills**: none
-**Dependencies**: `triage`, `timeline`, `blast_radius`, `detection_gap`, `response`
-
-**Asked to produce**: a plain-language summary, Severity, Confidence with
-rationale, MITRE techniques, and Recommended next steps. Precise, no overstated
-certainty.
+`splunk_search` `payload.type` controls the inline chart:
+`timechart | table | column | line | pie | single` (`column` aliases
+`timechart`). `ArtifactRenderer` renders Column/Line/Pie via
+`@splunk/visualizations`, and a native table for tabular data.
 
 ---
 
-## Adding a new agent
+## The shipping mesh
 
-1. Open `packages/agent-mesh/src/main/resources/splunk/default/agents.conf`.
-2. Add a new `[agent:<your_id>]` stanza with at minimum `display_name` and
-   `system_prompt`.
-3. Optionally add `skills = splunk_search` if the agent should run SPL queries.
-4. Optionally add `depends_on = <agent_id>` if it needs prior agent context.
-5. Reload the conf: in Splunk Web, `Settings → Server controls → Restart`,
-   or `splunk reload deploy-server`.
-6. Refresh the app — a new section appears in the investigation report.
+### `agent:spl_hunter` — "Threat Hunter" (primary, agentic)
 
-No backend redeploy. No frontend rebuild. No code changes.
+**Role**: the investigator and the only user-visible agent.
+**Skills**: `splunk_search`. **Mode**: `agentic`, `max_iterations = 14`.
+
+Runs the think → search → observe → report loop and emits the structured event
+stream above. Prompted to use common Splunk indexes (`main`, `endpoint`, `dns`,
+`auth`, `proxy`, `firewall`, `web`, `os`, `sysmon`) and real CIM field names,
+and to broaden or pivot when a search returns nothing.
+
+### `agent:executive_brief` — "Reporting" (subagent)
+
+**Role**: turns the investigation's findings into a concise leadership report
+(executive summary, severity, confidence, MITRE ATT&CK, next steps).
+
+Invoked **only** via a Threat Hunter `handoff`. Its markdown output is fed back
+to the Threat Hunter, which summarizes it through `result_summary` + `final`. It
+never appears in the UI as a peer agent.
+
+### Disabled agents (retained, `enabled = 0`)
+
+`triage`, `timeline`, `blast_radius`, `detection_gap`, `response` — the original
+SOC personas. They are kept in `agents.conf` for easy revival but are not run.
+The Threat Hunter now narrates triage, timeline, blast-radius, detection, and
+response inline as part of its event stream. See `docs/legacy/HISTORY.md` for
+why the 7-agent mesh collapsed to one visible agent.
+
+---
+
+## Adding or changing an agent
+
+1. Edit `packages/agent-mesh/src/main/resources/splunk/default/agents.conf`.
+2. To add a user-visible agentic agent, set `agent_mode = agentic`,
+   `agent_role = primary`, `skills = splunk_search`, and a system prompt that
+   enforces the event contract above.
+3. To add a delegated capability, set `agent_role = subagent` and reference it
+   from a primary agent's `handoff` payload (`sub_agent = <id>`).
+4. Reload conf (Splunk Web: **Settings → Server controls → Restart**, or
+   `splunk reload deploy-server`).
+
+No backend redeploy, no frontend rebuild for prompt/stanza changes. Changing the
+event contract itself requires updating `agents/events.py` and the renderers.

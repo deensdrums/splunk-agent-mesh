@@ -7,53 +7,82 @@ Splunk Agent Mesh
 Splunk Agentic Ops Hackathon
 
 ## One-Sentence Pitch
-Splunk Agent Mesh is a configurable agentic platform that runs inside Splunk Enterprise — define a mesh of AI agents in `agents.conf`, give them a user request, and each one writes back to the page.
+Splunk Agent Mesh is an agentic SOC investigation copilot inside Splunk
+Enterprise: describe an alert and a Threat Hunter agent investigates it live —
+reasoning, running real SPL, and reporting — as a single streaming transcript.
 
 ## Problem
-Multi-agent AI systems are useful but typically require code to add or tune an agent. Splunk operators want to compose agent meshes the same way they compose searches, lookups, and inputs: via stanza-based configuration that they can edit, version, and reload without touching code.
+Alert triage is slow and manual. An analyst pivots across endpoint, DNS, auth,
+proxy, and firewall data, forms hypotheses, and writes up findings — often 30+
+minutes per alert. The reasoning is repeatable, but tooling rarely captures it.
 
 ## Solution
-Splunk Agent Mesh ships:
-- A generic `LLMAgent` runtime that reads its behavior — display name, system prompt, model, temperature, order — from `[agent:<id>]` stanzas in `agents.conf`.
-- A Splunk app UI that renders one tab per configured agent. Each agent emits markdown; the page sanitizes and renders it.
-- A backend that integrates with Splunk Enterprise via the REST API for conf reads, credential storage, and (future) search execution.
+A single **Threat Hunter** agent runs a think → search → observe → report loop:
 
-The first example mesh is a SOC investigation mesh: triage, SPL hunter, timeline, blast radius, detection gap, response, executive brief. New meshes (cost-optimization, capacity planning, on-call triage, etc.) are just new sets of stanzas.
+- It returns a strict **structured event stream** (`narration`,
+  `splunk_search`, `result_summary`, `finding`, `handoff`, `final`) that a
+  harness validates and acts on — proposing one action per turn, executing it
+  against live Splunk, and feeding results back so the agent reacts to evidence.
+- It delegates the written report to an internal **Reporting** sub-agent via a
+  `handoff`, then summarizes that back into its own stream.
+- The analyst sees one conversational transcript with inline charts and a live
+  status bar — not a wall of disconnected agent tabs.
+
+Agents are still defined as `agents.conf` stanzas, so the mesh is configurable;
+the shipping mesh is intentionally focused on one visible agent plus one
+internal sub-agent.
 
 ## Target Users
-- Splunk admins composing agent meshes for their own teams.
-- SOC analysts using the bundled SOC mesh.
-- Detection engineers consuming the SPL/detection outputs.
+- SOC analysts triaging alerts.
+- Detection engineers consuming the findings and recommended actions.
+- Splunk admins who tune the agent via conf rather than code.
+
+## How it works (at a glance)
+- **Backend**: FastAPI (port 8765) reads `agents.conf` via Splunk REST, runs the
+  agentic harness loop, executes searches with the analyst's delegated Splunk
+  session, and streams structured events over SSE.
+- **Frontend**: a React console that reveals events progressively, renders
+  Splunk charts inline (`@splunk/visualizations`), and follows the live stream.
+- **Auth**: in Splunk Web, requests flow through an authenticated
+  `agent_mesh_bridge` REST endpoint; searches run as the analyst, and the
+  browser fetches result rows directly from Splunk Web.
 
 ## MVP Scope
-- Splunk app with three top-level views: Investigation, Settings, About.
-- Investigation view: input card (description + host + user + alert + time range), plus a tabbed area below — one tab per configured agent.
-- `agents.conf` with seven SOC-flavored agent stanzas as the first example mesh.
-- Agents emit markdown. The UI renders with `react-markdown` + sanitization.
-- FastAPI backend reads `agents.conf` via Splunk REST API (file fallback for dev).
-- LLM provider abstraction: Anthropic, OpenRouter, OpenAI-compatible.
-- Deterministic demo mode that mirrors the configured mesh with canned markdown.
+- Splunk app with three views: Investigation, Settings, About.
+- Investigation view: an input card plus a single streaming Threat Hunter
+  transcript with inline search artifacts and a status bar.
+- `agents.conf` defining the Threat Hunter (primary, agentic) and the Reporting
+  sub-agent, with five legacy SOC personas retained but disabled.
+- LLM provider abstraction: Anthropic (active), OpenRouter, OpenAI-compatible.
+- Deterministic demo mode with a canned event stream and one artifact.
 
 ## Non-Goals (current scope)
-- Automated response execution. All actions are recommendations requiring human approval.
+- Automated response execution — all actions are recommendations.
 - Multi-tenant or per-user mesh customization.
-- Parallel agent execution (architecturally possible via DAG depth, not yet implemented).
+- Multi-process / horizontally-scaled backend (single-process POC today).
 
 ## Implemented Features
-- **Skills**: `splunk_search` skill — agents emit fenced SPL blocks, orchestrator executes them, results render as interactive charts and tables.
-- **Cross-agent context**: `depends_on` field — orchestrator builds a DAG and passes upstream outputs to dependent agents.
-- **SSE streaming**: per-agent progressive rendering via Server-Sent Events.
-- **Visualization hints**: agents control chart type via fence tag suffixes (`spl_column`, `spl_table`, etc.).
-- **`@splunk/visualizations`**: Column, Line, Pie chart rendering from Splunk's official library.
+- **Structured event contract** with harness-side validation and corrective
+  retry.
+- **Harness-driven agentic loop** (provider-agnostic; one action per turn;
+  finalize-turn safety net).
+- **Reporting sub-agent** invoked via `handoff` and summarized back.
+- **Live, progressive Splunk search** with preview-row streaming and inline
+  visualizations.
+- **Delegated Splunk auth** via the REST bridge + signed SSE stream tokens +
+  browser-side row fetching.
+- **Console UI** with staggered event reveal and stick-to-bottom auto-follow.
 
 ## Future Direction
-- **Additional skills**: `web_search`, `mitre_lookup` (resolves technique IDs).
-- **Parallel execution**: agents at the same DAG depth could run concurrently.
-- **Multiple meshes**: app supports more than one mesh, selectable from the UI.
+- Discovery tools for the agent (index/sourcetype/field summaries).
+- A search-optimizer sub-agent that refines SPL before execution.
+- Re-enabling specialized personas as additional primary agents when useful.
+- Production credential storage (Splunk Passwords API) and multi-process
+  hardening (shared stream-token secret + job store).
 
 ## Final Demo Experience
-A user opens Splunk Agent Mesh in Splunk Web, fills in an investigation description (or clicks "Load Suspicious PowerShell Demo"), and within seconds sees:
-- Agent sections populating progressively via SSE streaming.
-- Rich markdown in each section — severity classification, recommended SPL searches, an incident timeline table, blast-radius analysis, a detection rule, a numbered response plan, and an executive summary with MITRE techniques.
-- Interactive charts (Column, Line, Pie) and data tables rendered inline from live Splunk search results.
-- If an admin edits `agents.conf` to add an eighth agent, an eighth section appears in the report with no UI changes.
+The analyst opens Splunk Agent Mesh, describes the alert (or clicks **Load
+Suspicious PowerShell Demo**), and within seconds watches the Threat Hunter
+work: it narrates its plan, runs SPL searches whose charts fill in live, calls
+out findings, hands off to the reporting agent, and closes with a final summary
+and recommended actions — all in one scrolling transcript.
