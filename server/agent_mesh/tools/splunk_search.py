@@ -2,48 +2,11 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from typing import Callable
 
 from ..investigation_models import now_iso
 from ..splunk_client import SearchResult, SplunkClient
-
-_SPL_BLOCK_RE = re.compile(
-    r"```(?:spl|splunk)(?:_([a-z]+))?\s*\n(.*?)```", re.IGNORECASE | re.DOTALL
-)
-_HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*$", re.MULTILINE)
-
-_SPL_INDICATORS = re.compile(
-    r"\b(index\s*=|stats\s|table\s|where\s|eval\s|search\s|sourcetype\s*=|timechart\s)", re.IGNORECASE
-)
-
-_VIZ_HINT_MAP: dict[str, str] = {
-    "column": "timechart",
-    "timechart": "timechart",
-    "line": "line",
-    "pie": "pie",
-    "bar": "bar",
-    "table": "table",
-    "single": "single",
-}
-
-
-def extract_spl_blocks(markdown: str) -> list[dict]:
-    blocks: list[dict] = []
-    for idx, match in enumerate(_SPL_BLOCK_RE.finditer(markdown), start=1):
-        viz_suffix = match.group(1)
-        spl = match.group(2).strip()
-        if not spl:
-            continue
-        if not _SPL_INDICATORS.search(spl):
-            continue
-        prefix = markdown[: match.start()]
-        headings = _HEADING_RE.findall(prefix)
-        title = headings[-1] if headings else f"SPL search {idx}"
-        viz_hint = _VIZ_HINT_MAP.get(viz_suffix.lower()) if viz_suffix else None
-        blocks.append({"title": title, "spl": spl, "viz_hint": viz_hint})
-    return blocks
 
 
 def infer_visualization(

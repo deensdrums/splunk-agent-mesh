@@ -37,9 +37,10 @@ graph TD
   peer. Today that is `executive_brief` ("Reporting").
 - The orchestrator runs only primary agents top-level and passes a lookup of
   sub-agents to the agentic agent.
-- Five legacy SOC agents (`triage`, `timeline`, `blast_radius`,
-  `detection_gap`, `response`) remain in `agents.conf` as `enabled = 0` — kept
-  for easy revival, not run.
+
+The mesh was previously seven peer agents; the other five SOC personas were
+removed when the project committed to the single-Threat-Hunter model (see
+`docs/legacy/HISTORY.md`).
 
 ## The structured event contract
 
@@ -161,11 +162,12 @@ and the SSE endpoint streams progress.
 ### Orchestrator
 
 `Orchestrator.run()` reads all enabled agents, splits them into `primary` and
-`subagent` sets, executes only the primary agents, and hands the sub-agent
-lookup to the agentic agent. A `primary` agent with `agent_mode = agentic` runs
-through `AgenticLLMAgent`; a `single_shot` agent runs through the generic
-`LLMAgent` (and the legacy `depends_on` DAG / fenced-SPL post-processing path
-still exists for such agents, though none ship enabled today).
+`subagent` sets, executes only the primary agents (in `order`), and hands the
+sub-agent lookup to the agentic agent. Primary agents run through
+`AgenticLLMAgent`; if no LLM provider is configured the orchestrator emits a
+graceful "no API key" error output instead. There is no separate single-shot
+execution path, cross-agent DAG, or fenced-SPL post-processing — those were
+removed once the mesh became a single agentic agent.
 
 ### SSE streaming
 

@@ -101,7 +101,6 @@ server/
       agent_config.py             # AgentConfig dataclass
       events.py                   # Structured event schema + validator (pydantic)
       agentic_llm_agent.py        # Threat Hunter harness loop (the active agent)
-      llm_agent.py                # Generic single-shot agent (legacy / disabled agents)
       orchestrator.py             # Primary/sub-agent split, execution, artifact collection
     tools/splunk_search.py        # SPL execution, artifact shaping, viz inference
     llm/                          # Anthropic, OpenRouter, OpenAI-compatible
@@ -197,14 +196,13 @@ system_prompt = You are the Threat Hunter ... respond with VALID JSON ONLY ...
 | `description` | no | "" | Shown in agent listings |
 | `order` | no | 100 | Execution order (lower first) |
 | `enabled` | no | 1 | Disabled stanzas are excluded entirely |
-| `agent_mode` | no | single_shot | `agentic` (harness event loop) or `single_shot` |
-| `agent_role` | no | primary | `primary` (user-visible) or `subagent` (delegated) |
+| `agent_mode` | no | single_shot | Set `agentic` for a primary agent (the harness event loop). `single_shot` is just the default label for sub-agents. |
+| `agent_role` | no | primary | `primary` (user-visible, must be `agentic`) or `subagent` (delegated via handoff) |
 | `max_iterations` | no | 10 | Safety cap on agentic loop turns |
 | `model` | no | claude-sonnet-4-6 | LLM model identifier |
 | `temperature` | no | 0.2 | Sampling temperature |
 | `max_tokens` | no | 2048 | Completion length cap |
 | `skills` | no | "" | Comma-separated skills (currently: `splunk_search`) |
-| `depends_on` | no | "" | Agent ids that must complete first (single-shot DAG) |
 
 See `packages/agent-mesh/src/main/resources/splunk/README/agents.conf.spec`,
 and `docs/AGENT_DESIGN.md` for the response contract and the shipping mesh.

@@ -96,20 +96,19 @@ investigation and delegates only to an internal reporting sub-agent.
 All agents emitted GitHub-flavored markdown, rendered with `react-markdown` +
 sanitization. This was simple and flexible but too loose to drive reliable UI
 behavior. Superseded for the Threat Hunter by the structured event contract
-(ADR-012). Markdown rendering survives for `final`-summary text, the reporting
-sub-agent's internal output, and the (disabled) single-shot agents.
+(ADR-012). Markdown rendering survives for `final`-summary text and the
+reporting sub-agent's internal output.
 
 ---
 
 ## ADR-009: Cross-Agent Dependencies via `depends_on`
 
-**Date**: 2026-05-24 · **Status**: Superseded by ADR-013
+**Date**: 2026-05-24 · **Status**: Superseded by ADR-013; removed in ADR-019
 
 Added an optional `depends_on` DAG so downstream agents could see upstream
 findings. Superseded by the single-visible-agent model: the Threat Hunter holds
 the full investigation context itself, so cross-agent DAG context is no longer
-the mechanism. The `depends_on` plumbing remains for single-shot agents but no
-shipping agent uses it.
+the mechanism. The `depends_on` field and DAG were deleted entirely in ADR-019.
 
 ---
 
@@ -126,13 +125,13 @@ in-memory; a restart loses in-flight runs.
 
 ## ADR-011: Skills as Post-Processing, Not Tool Use
 
-**Date**: 2026-05-24 · **Status**: Superseded by ADR-012
+**Date**: 2026-05-24 · **Status**: Superseded by ADR-012; removed in ADR-019
 
 The `splunk_search` skill was implemented as post-processing: the orchestrator
 regex-extracted fenced SPL from completed markdown and executed it. The agent
 never saw results. Superseded by the agentic harness loop (ADR-012), where the
 agent emits `splunk_search` events, the harness executes one per turn, and feeds
-results back. The post-processing path remains for single-shot agents.
+results back. The fenced-SPL post-processing path was deleted in ADR-019.
 
 ---
 
@@ -263,3 +262,32 @@ revision increases. The browser renders pending → running → done.
 
 **Consequences**: live search feedback in the transcript; the SSE de-dup logic
 keys on `_revision` rather than first-seen artifact id.
+
+---
+
+## ADR-019: Delete unused single-shot / DAG / fenced-SPL / native-tool-use code
+
+**Date**: 2026-06-01 · **Status**: Accepted (removes the residue of ADR-008,
+ADR-009, ADR-011, and the abandoned native-tool-use plan)
+
+**Context**: After committing to the single agentic Threat Hunter (ADR-013) and
+the harness event loop (ADR-016), several earlier mechanisms were still in the
+tree but unreachable by the shipping mesh — dead alternatives that read as
+load-bearing.
+
+**Chosen**: delete them.
+- Native tool-use: `AnthropicProvider.complete_with_tools`, `ToolCall`,
+  `ToolUseResponse` (the harness uses `complete()` only).
+- Single-shot execution: the `LLMAgent` class and the orchestrator's non-agentic
+  branch; replaced by a small "no LLM configured" error output.
+- The `depends_on` DAG: `_execution_order`, `_dependency_context`, and the
+  `depends_on` config field/parsing/descriptor.
+- Fenced-SPL post-processing: `extract_spl_blocks` and its regexes plus the
+  orphaned viz-hint map in `tools/splunk_search.py` (the `events` module's
+  `VIZ_HINT_MAP` is now the single source).
+- The five retired SOC stanzas in `agents.conf`.
+
+**Consequences**: the harness/sub-agent (`handoff`) flow is untouched — it runs
+via `llm.complete()` + the sub-agent lookup, not any of the above. Reviving a
+retired persona now means adding an `agent_mode = agentic` stanza; the old
+single-shot/markdown form no longer runs. Net removal of ~340 lines.
