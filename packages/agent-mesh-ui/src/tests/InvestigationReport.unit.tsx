@@ -44,6 +44,13 @@ const FINAL_EVENT: AgentEvent = {
     payload: {},
 };
 
+const HANDOFF_EVENT: AgentEvent = {
+    type: 'handoff',
+    title: 'Reporting agent requested',
+    text: 'Delegating to the reporting agent.',
+    payload: { sub_agent: 'executive_brief', task: 'summarize_findings' },
+};
+
 function resultWithEvents(events: AgentEvent[]): InvestigationResult {
     return {
         id: 'inv-test',
@@ -191,14 +198,58 @@ describe('InvestigationReport console', () => {
         expect(within(scrollArea).queryByText('Search complete. Showing final results.')).not.toBeInTheDocument();
     });
 
-    test('shows thinking while active and hides it after the final event is revealed', () => {
+    test('hides the thinking indicator while a search is running', () => {
+        const result = resultWithEvents([SEARCH_EVENT]);
+        result.artifacts = [{ ...SEARCH_ARTIFACT, status: 'running', _revision: 2 }];
+
+        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        expect(screen.queryByTestId('thinking-indicator')).not.toBeInTheDocument();
+    });
+
+    test('reports interpreting results once a search completes', () => {
+        const result = resultWithEvents([SEARCH_EVENT]);
+        result.artifacts = [SEARCH_ARTIFACT]; // status: 'done'
+
+        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Interpreting results');
+    });
+
+    test('reports finalizing after a handoff event is revealed', () => {
+        render(
+            <InvestigationReport
+                descriptors={[]}
+                result={resultWithEvents([EVENT_ONE, HANDOFF_EVENT])}
+                running
+                onClear={jest.fn()}
+            />
+        );
+        // Each reveal step needs its own act() so the next timer is scheduled.
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Finalizing');
+    });
+
+    test('shows a working label while active and hides it after the final event is revealed', () => {
         const { rerender } = render(
             <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />
         );
         act(() => {
             jest.advanceTimersByTime(330);
         });
-        expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Thinking');
+        expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Investigating');
 
         rerender(
             <InvestigationReport

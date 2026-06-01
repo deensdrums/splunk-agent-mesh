@@ -6,6 +6,7 @@ import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import {
     AgentDescriptor,
+    AgentEvent,
     AgentOutput,
     AgentRunStatus,
     Artifact,
@@ -245,6 +246,35 @@ const Placeholder = styled.div`
 `;
 
 /**
+ * Context-aware label for the working indicator, derived from the last
+ * *revealed* event (so it stays coherent with the visible transcript) and, for
+ * searches, the artifact's status. Returns `null` to hide the indicator
+ * entirely — e.g. while a search is running, since the search card already
+ * shows its own progress.
+ */
+function thinkingLabel(visible: AgentEvent[], artifacts: Artifact[]): string | null {
+    if (visible.length === 0) {
+        return 'Investigating';
+    }
+    const last = visible[visible.length - 1];
+    if (last.type === 'splunk_search') {
+        // The Nth revealed search maps to the Nth artifact (one search per turn).
+        const searchCount = visible.filter((event) => event.type === 'splunk_search').length;
+        const artifact = artifacts[searchCount - 1];
+        if (!artifact || artifact.status === 'pending' || artifact.status === 'running') {
+            return null; // search in flight — its card carries the running state
+        }
+        return 'Interpreting results'; // rows are back; the agent is reading them
+    }
+    // After a handoff the sub-agent has already responded (the harness only
+    // streams the handoff event once it returns), so a final answer is next.
+    if (last.type === 'handoff' || (last.type === 'result_summary' && visible.some((e) => e.type === 'handoff'))) {
+        return 'Finalizing';
+    }
+    return 'Investigating';
+}
+
+/**
  * The threat hunter's transcript: an open, scrollable region of structured
  * event blocks (with inline search artifacts) plus a persistent status footer.
  *
@@ -336,14 +366,15 @@ const AgentTranscript: React.FC<{
         // event is revealed, so none appears before its search card.
         const leftover = revealed >= total ? artifacts.slice(searchIndex) : [];
         const finalRevealed = visible.some((event) => event.type === 'final');
-        const showThinking = isActive && !finalRevealed;
+        const label = thinkingLabel(visible, artifacts);
+        const showThinking = isActive && !finalRevealed && label !== null;
         body = (
             <>
                 {rendered}
                 {leftover.map((artifact) => (
                         <ArtifactRenderer key={artifact.id} artifact={artifact} />
                     ))}
-                {showThinking && <ThinkingIndicator data-testid="thinking-indicator">Thinking</ThinkingIndicator>}
+                {showThinking && <ThinkingIndicator data-testid="thinking-indicator">{label}</ThinkingIndicator>}
             </>
         );
     }
