@@ -10,6 +10,7 @@ import { Artifact, SearchArtifact } from '../types';
 
 interface Props {
     artifact: Artifact;
+    embedded?: boolean;
 }
 
 const Card = styled.div`
@@ -39,6 +40,20 @@ const Meta = styled.div`
 
 const Body = styled.div`
     padding: ${variables.spacingMedium};
+`;
+
+const EmbeddedArtifact = styled.div`
+    margin-top: ${variables.spacingMedium};
+    padding-top: ${variables.spacingSmall};
+    border-top: 1px solid ${variables.borderColor};
+`;
+
+const EmbeddedMeta = styled.div`
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: ${variables.spacingSmall} ${variables.spacingMedium};
+    margin-bottom: ${variables.spacingSmall};
 `;
 
 const SplBlock = styled.pre`
@@ -230,50 +245,75 @@ function renderViz(artifact: SearchArtifact, fields: string[], rows: Record<stri
     return <RowsTable fields={fields} rows={rows} />;
 }
 
-const SearchArtifactRenderer: React.FC<{ artifact: SearchArtifact }> = ({ artifact }) => {
+const SearchArtifactBody: React.FC<{ artifact: SearchArtifact; includeSpl: boolean }> = ({ artifact, includeSpl }) => {
     const previewRows = artifact.rows.slice(0, 20);
     const fields = artifact.fields.length > 0 ? artifact.fields : inferFields(previewRows);
+
+    return (
+        <>
+            {artifact.status === 'running' && (
+                <Message type="info">
+                    <WaitSpinner size="small" /> Search is still running.
+                </Message>
+            )}
+            {artifact.status === 'error' && (
+                <Message type="error">{artifact.error || 'Search failed.'}</Message>
+            )}
+            {artifact.status === 'done' && renderViz(artifact, fields, previewRows)}
+            {includeSpl && (
+                <SplBlock>
+                    <code>{artifact.spl}</code>
+                </SplBlock>
+            )}
+            {artifact.messages?.map((message) => (
+                <Message key={message} type="info">
+                    {message}
+                </Message>
+            ))}
+        </>
+    );
+};
+
+const SearchArtifactRenderer: React.FC<{ artifact: SearchArtifact; embedded?: boolean }> = ({ artifact, embedded }) => {
+    const meta = (
+        <Meta>
+            {artifact.visualization.kind} · {artifact.status}
+            {artifact.sid ? ` · SID ${artifact.sid}` : ''}
+        </Meta>
+    );
+    const range = <Meta>{artifact.earliest} to {artifact.latest}</Meta>;
+
+    if (embedded) {
+        return (
+            <EmbeddedArtifact>
+                <EmbeddedMeta>
+                    {meta}
+                    {range}
+                </EmbeddedMeta>
+                <SearchArtifactBody artifact={artifact} includeSpl={false} />
+            </EmbeddedArtifact>
+        );
+    }
 
     return (
         <Card>
             <Header>
                 <div>
                     <Title>{artifact.title}</Title>
-                    <Meta>
-                        {artifact.visualization.kind} · {artifact.status}
-                        {artifact.sid ? ` · SID ${artifact.sid}` : ''}
-                    </Meta>
+                    {meta}
                 </div>
-                <Meta>
-                    {artifact.earliest} to {artifact.latest}
-                </Meta>
+                {range}
             </Header>
             <Body>
-                {artifact.status === 'running' && (
-                    <Message type="info">
-                        <WaitSpinner size="small" /> Search is still running.
-                    </Message>
-                )}
-                {artifact.status === 'error' && (
-                    <Message type="error">{artifact.error || 'Search failed.'}</Message>
-                )}
-                {artifact.status === 'done' && renderViz(artifact, fields, previewRows)}
-                <SplBlock>
-                    <code>{artifact.spl}</code>
-                </SplBlock>
-                {artifact.messages?.map((message) => (
-                    <Message key={message} type="info">
-                        {message}
-                    </Message>
-                ))}
+                <SearchArtifactBody artifact={artifact} includeSpl />
             </Body>
         </Card>
     );
 };
 
-const ArtifactRenderer: React.FC<Props> = ({ artifact }) => {
+const ArtifactRenderer: React.FC<Props> = ({ artifact, embedded }) => {
     if (artifact.type === 'splunk_search') {
-        return <SearchArtifactRenderer artifact={artifact} />;
+        return <SearchArtifactRenderer artifact={artifact} embedded={embedded} />;
     }
     return null;
 };

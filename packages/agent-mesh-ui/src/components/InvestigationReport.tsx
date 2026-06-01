@@ -299,8 +299,7 @@ const AgentTranscript: React.FC<{
             return (
                 // eslint-disable-next-line react/no-array-index-key
                 <RevealItem key={`event-${idx}`}>
-                    <EventRenderer event={event} />
-                    {artifact && <ArtifactRenderer artifact={artifact} />}
+                    <EventRenderer event={event} artifact={artifact} />
                 </RevealItem>
             );
         });

@@ -2,7 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import InvestigationReport from '../components/InvestigationReport';
-import { AgentEvent, InvestigationResult } from '../types';
+import { AgentEvent, Artifact, InvestigationResult } from '../types';
 
 jest.mock('@splunk/themes', () => ({
     variables: new Proxy({}, { get: () => '0px' }),
@@ -54,6 +54,32 @@ function resultWithEvents(events: AgentEvent[]): InvestigationResult {
         artifacts: [],
     };
 }
+
+const SEARCH_EVENT: AgentEvent = {
+    type: 'splunk_search',
+    title: 'Encoded PowerShell search',
+    text: 'Checking endpoint activity.',
+    payload: {
+        query: 'index=endpoint process_name=powershell.exe | timechart count',
+        purpose: 'Confirm suspicious execution.',
+        type: 'timechart',
+    },
+};
+
+const SEARCH_ARTIFACT: Artifact = {
+    id: 'artifact-test',
+    type: 'splunk_search',
+    agent_id: 'spl_hunter',
+    title: 'Encoded PowerShell search',
+    spl: 'index=endpoint process_name=powershell.exe | timechart count',
+    earliest: '-4h',
+    latest: 'now',
+    sid: 'test-sid',
+    status: 'done',
+    fields: ['_time', 'count'],
+    rows: [{ _time: '2026-05-21T14:02:00+00:00', count: '3' }],
+    visualization: { kind: 'timechart', reason: 'SPL uses timechart.' },
+};
 
 describe('InvestigationReport console', () => {
     beforeEach(() => {
@@ -125,5 +151,21 @@ describe('InvestigationReport console', () => {
 
         expect(scrollArea.scrollTop).toBe(100);
         expect(within(scrollArea).getByText('Suspicious activity found.')).toBeInTheDocument();
+    });
+
+    test('renders search results inside one blue event card without duplicating SPL or title', () => {
+        const result = resultWithEvents([SEARCH_EVENT]);
+        result.artifacts = [SEARCH_ARTIFACT];
+
+        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        act(() => {
+            jest.advanceTimersByTime(300);
+        });
+
+        const scrollArea = screen.getByTestId('transcript-scroll');
+        expect(within(scrollArea).getAllByText('Encoded PowerShell search')).toHaveLength(1);
+        expect(within(scrollArea).getAllByText('index=endpoint process_name=powershell.exe | timechart count')).toHaveLength(1);
+        expect(within(scrollArea).getByText('Column')).toBeInTheDocument();
+        expect(within(scrollArea).getByText('timechart · done · SID test-sid')).toBeInTheDocument();
     });
 });

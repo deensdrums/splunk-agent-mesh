@@ -1,7 +1,8 @@
 import React from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
-import { AgentEvent } from '../types';
+import { AgentEvent, Artifact } from '../types';
+import ArtifactRenderer from './ArtifactRenderer';
 import MarkdownView from './MarkdownView';
 
 /**
@@ -9,13 +10,13 @@ import MarkdownView from './MarkdownView';
  * event is already valid (type/title/text/payload), so this component only
  * decides presentation per type — it never validates or repairs model output.
  *
- * splunk_search events render their query and intent here; the actual results
- * and visualization come from the matching SearchArtifact, which the parent
- * renders immediately after this event (see InvestigationReport).
+ * splunk_search events render their query and intent here, along with the
+ * matching SearchArtifact results supplied by the parent.
  */
 
 interface Props {
     event: AgentEvent;
+    artifact?: Artifact;
 }
 
 const EventCard = styled.div<{ accent: string }>`
@@ -123,7 +124,7 @@ const PayloadFields: React.FC<{ payload: Record<string, unknown>; skip?: string[
     );
 };
 
-const EventRenderer: React.FC<Props> = ({ event }) => {
+const EventRenderer: React.FC<Props> = ({ event, artifact }) => {
     const accent = TYPE_ACCENTS[event.type];
     const payload = event.payload || {};
 
@@ -142,6 +143,9 @@ const EventRenderer: React.FC<Props> = ({ event }) => {
                     </SplBlock>
                     <PayloadFields payload={payload} skip={['query']} />
                 </>
+            )}
+            {event.type === 'splunk_search' && artifact && (
+                <ArtifactRenderer artifact={artifact} embedded />
             )}
 
             {event.type === 'finding' && <PayloadFields payload={payload} />}
