@@ -40,3 +40,26 @@ def audit_event(
         "details": details,
     }
 
+
+def public_artifact(artifact: dict) -> dict:
+    """Return the browser-safe artifact shape.
+
+    Real Splunk rows are fetched by the browser through Splunk Web's authenticated
+    proxy. Demo artifacts retain rows because they have no Splunk search job.
+    """
+    if artifact.get("type") != "splunk_search" or artifact.get("sid") == "demo":
+        return dict(artifact)
+    return {
+        **artifact,
+        "fields": [],
+        "rows": [],
+        "messages": [],
+    }
+
+
+def public_investigation(job: dict) -> dict:
+    """Return a shallow browser-safe projection of an investigation."""
+    return {
+        **job,
+        "artifacts": [public_artifact(artifact) for artifact in job.get("artifacts", [])],
+    }

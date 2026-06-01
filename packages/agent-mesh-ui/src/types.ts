@@ -74,6 +74,7 @@ export interface SearchArtifact {
     rows: Record<string, unknown>[];
     messages?: string[];
     error?: string | null;
+    browser_results_error?: string | null;
     started_at?: string;
     completed_at?: string | null;
     visualization: VisualizationSpec;
@@ -119,6 +120,7 @@ export interface InvestigationStartResponse {
     status: InvestigationResult['status'];
     owner?: string;
     started_at?: string;
+    stream_token: string;
 }
 
 export interface InvestigationStatus {

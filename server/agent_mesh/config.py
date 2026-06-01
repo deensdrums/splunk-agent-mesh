@@ -40,6 +40,8 @@ CORS_ORIGINS: list[str] = [
 # Splunk REST API base URL.
 SPLUNK_HOST: str = os.getenv("SPLUNK_HOST", "https://localhost:8089")
 SPLUNK_TOKEN: str = os.getenv("SPLUNK_TOKEN", "")
+ALLOW_SERVICE_SEARCH_FALLBACK: bool = os.getenv("AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK", "0") == "1"
+STREAM_TOKEN_TTL_SECONDS: int = int(os.getenv("AGENT_MESH_STREAM_TOKEN_TTL_SECONDS", "14400"))
 
 # Splunk app id — used to scope REST calls (configs, passwords, search).
 SPLUNK_APP_ID: str = os.getenv("AGENT_MESH_SPLUNK_APP_ID", "splunk-agent-mesh")

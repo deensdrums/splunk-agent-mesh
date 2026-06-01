@@ -8,6 +8,7 @@ import Message from '@splunk/react-ui/Message';
 import { AgentDescriptor, Artifact, InvestigationRequest, InvestigationResult } from '../types';
 import InvestigationReport from '../components/InvestigationReport';
 import { apiClient, createInvestigationStream } from '../services/apiClient';
+import { canPollSplunkWebResults, pollSplunkSearchResults } from '../services/splunkSearchResults';
 import { DEMO_RESULT } from '../demo/demoData';
 
 const FormCard = styled.div`
@@ -88,7 +89,20 @@ const DEMO_FORM: InvestigationRequest = {
 
 export function upsertArtifacts(current: Artifact[], updates: Artifact[]): Artifact[] {
     const byId = new Map(current.map((artifact) => [artifact.id, artifact]));
-    updates.forEach((artifact) => byId.set(artifact.id, artifact));
+    updates.forEach((artifact) => {
+        const previous = byId.get(artifact.id);
+        if (previous && artifact.sid && artifact.sid !== 'demo' && artifact.rows.length === 0) {
+            byId.set(artifact.id, {
+                ...artifact,
+                fields: previous.fields,
+                rows: previous.rows,
+                messages: previous.messages,
+                browser_results_error: previous.browser_results_error,
+            });
+        } else {
+            byId.set(artifact.id, artifact);
+        }
+    });
     return Array.from(byId.values());
 }
 
@@ -104,16 +118,56 @@ const InvestigationPage: React.FC = () => {
     const [descriptors, setDescriptors] = useState<AgentDescriptor[]>([]);
     const [inputsExpanded, setInputsExpanded] = useState(true);
     const streamRef = useRef<{ close: () => void } | null>(null);
+    const searchPollersRef = useRef<Map<string, { close: () => void }>>(new Map());
 
     useEffect(() => {
+        const searchPollers = searchPollersRef.current;
         apiClient
             .getAgents()
             .then((res) => setDescriptors(res.agents))
             .catch(() => {});
         return () => {
             streamRef.current?.close();
+            searchPollers.forEach((poller) => poller.close());
+            searchPollers.clear();
         };
     }, []);
+
+    useEffect(() => {
+        if (!canPollSplunkWebResults) {return;}
+        (result?.artifacts || []).forEach((artifact) => {
+            if (
+                !artifact.sid
+                || artifact.sid === 'demo'
+                || artifact.status === 'error'
+                || (artifact.status === 'done' && artifact.rows.length > 0)
+                || searchPollersRef.current.has(artifact.id)
+            ) {return;}
+            const poller = pollSplunkSearchResults(
+                artifact,
+                (update) => {
+                    setResult((prev) => prev ? {
+                        ...prev,
+                        artifacts: upsertArtifacts(prev.artifacts || [], [update]),
+                    } : prev);
+                },
+                (message) => {
+                    setResult((prev) => {
+                        if (!prev) {return prev;}
+                        const existing = (prev.artifacts || []).find((item) => item.id === artifact.id);
+                        return existing ? {
+                            ...prev,
+                            artifacts: upsertArtifacts(prev.artifacts || [], [{
+                                ...existing,
+                                browser_results_error: message,
+                            }]),
+                        } : prev;
+                    });
+                },
+            );
+            searchPollersRef.current.set(artifact.id, poller);
+        });
+    }, [result?.artifacts]);
 
     const loadDemoForm = () => {
         setDescription(DEMO_FORM.description!);
@@ -128,7 +182,10 @@ const InvestigationPage: React.FC = () => {
         while (Date.now() < deadline) {
             // eslint-disable-next-line no-await-in-loop
             const current = await apiClient.getInvestigation(id);
-            setResult(current);
+            setResult((prev) => ({
+                ...current,
+                artifacts: upsertArtifacts(prev?.artifacts || [], current.artifacts || []),
+            }));
             if (current.status !== 'running' && current.status !== 'pending') {
                 return current;
             }
@@ -141,9 +198,9 @@ const InvestigationPage: React.FC = () => {
     };
 
     const streamInvestigation = useCallback(
-        (id: string): Promise<void> =>
+        (id: string, streamToken: string): Promise<void> =>
             new Promise((resolve, reject) => {
-                const stream = createInvestigationStream(id, {
+                const stream = createInvestigationStream(id, streamToken, {
                     onAgentOrder: (order) => {
                         setResult((prev) => (prev ? { ...prev, agent_order: order } : prev));
                         if (descriptors.length === 0 && order.length > 0) {
@@ -192,7 +249,10 @@ const InvestigationPage: React.FC = () => {
                         apiClient
                             .getInvestigation(id)
                             .then((full) => {
-                                setResult(full);
+                                setResult((prev) => ({
+                                    ...full,
+                                    artifacts: upsertArtifacts(prev?.artifacts || [], full.artifacts || []),
+                                }));
                                 resolve();
                             })
                             .catch(() => {
@@ -225,6 +285,8 @@ const InvestigationPage: React.FC = () => {
         setResult(null);
         setInputsExpanded(false);
         streamRef.current?.close();
+        searchPollersRef.current.forEach((poller) => poller.close());
+        searchPollersRef.current.clear();
 
         try {
             const req: InvestigationRequest =
@@ -252,7 +314,7 @@ const InvestigationPage: React.FC = () => {
                 });
 
                 try {
-                    await streamInvestigation(start.id);
+                    await streamInvestigation(start.id, start.stream_token);
                 } catch {
                     await pollInvestigation(start.id);
                 }
@@ -270,6 +332,9 @@ const InvestigationPage: React.FC = () => {
     };
 
     const clearInvestigation = () => {
+        streamRef.current?.close();
+        searchPollersRef.current.forEach((poller) => poller.close());
+        searchPollersRef.current.clear();
         setResult(null);
         setError(null);
         setInputsExpanded(true);

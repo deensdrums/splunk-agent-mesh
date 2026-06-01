@@ -281,6 +281,9 @@ const SearchArtifactBody: React.FC<{ artifact: SearchArtifact; includeSpl: boole
             {artifact.status === 'error' && (
                 <Message type="error">{artifact.error || 'Search failed.'}</Message>
             )}
+            {artifact.browser_results_error && (
+                <Message type="error">{artifact.browser_results_error}</Message>
+            )}
             {(artifact.status === 'done' || (artifact.status === 'running' && previewRows.length > 0))
                 && renderViz(artifact, fields, previewRows)}
             {includeSpl && (
