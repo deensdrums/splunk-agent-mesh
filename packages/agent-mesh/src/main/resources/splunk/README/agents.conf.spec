@@ -27,16 +27,17 @@ output_format = markdown
 * Reserved for future use. Only "markdown" is honored in v1.
 
 agent_mode = <string>
-* Execution mode for the agent. Values:
-*   single_shot — one LLM call, tools run post-hoc (default).
-*   agentic — iterative tool-use loop via the Anthropic tool-use API.
-*     The agent calls tools, observes results, and iterates until it
-*     stops calling tools or reaches max_iterations.
+* Execution mode. A primary (user-visible) agent must be "agentic": the harness
+*   drives a think/search/observe loop, parsing the agent's JSON event stream
+*   and executing one action per turn until it returns a final event.
+* "single_shot" is the default value but has no execution path of its own; it is
+*   the harmless default that sub-agents carry (sub-agents run via the primary
+*   agent's handoff, calling the model directly).
 * Default: single_shot.
 
 max_iterations = <integer>
-* Maximum number of tool-use iterations for agentic agents. Ignored for
-* single_shot agents. Acts as a safety cap to prevent runaway loops.
+* Maximum number of harness loop turns for an agentic agent. Acts as a safety
+* cap to prevent runaway loops.
 * Default: 10.
 
 
@@ -62,13 +63,7 @@ order = <integer>
 
 skills = <comma-separated list>
 * Lists named skills the agent may invoke. Currently supported:
-*   splunk_search — extracts fenced SPL blocks from the agent's markdown output,
-*     executes them against Splunk, and attaches results as structured artifacts.
-*     Agents should use visualization-hinted fence tags (spl_column, spl_table,
-*     spl_line, spl_bar, spl_pie, spl_single) to control chart rendering.
-
-depends_on = <comma-separated list>
-* Optional list of agent ids that must complete before this agent runs.
-* The orchestrator builds a DAG from these edges and executes in topological order.
-* Dependent agents receive prior agent markdown outputs and artifact metadata
-* as additional context in their request.
+*   splunk_search — the agent emits splunk_search events; the harness executes
+*     each query against Splunk and attaches results as structured artifacts.
+*     The event's payload.type (timechart, table, column, line, pie, single)
+*     controls chart rendering.

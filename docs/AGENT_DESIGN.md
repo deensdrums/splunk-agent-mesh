@@ -36,14 +36,13 @@ system_prompt = You are the Threat Hunter ... respond with VALID JSON ONLY ...
 | `description` | no | string | "" | Shown in agent listings. |
 | `order` | no | int | 100 | Execution order (lower first; ties by id). |
 | `enabled` | no | bool | 1 | Disabled stanzas are excluded entirely. |
-| `agent_mode` | no | string | single_shot | `agentic` (harness event loop) or `single_shot`. |
-| `agent_role` | no | string | primary | `primary` (user-visible) or `subagent` (delegated). |
+| `agent_mode` | no | string | single_shot | Set `agentic` for a primary agent (the harness event loop). `single_shot` is just the default label sub-agents carry; there is no single-shot execution path. |
+| `agent_role` | no | string | primary | `primary` (user-visible, must be `agentic`) or `subagent` (delegated via handoff). |
 | `max_iterations` | no | int | 10 | Safety cap on agentic loop turns. |
 | `model` | no | string | (default) | LLM model identifier. |
 | `temperature` | no | float | (default) | Sampling temperature. |
 | `max_tokens` | no | int | 2048 | Completion length cap. |
 | `skills` | no | csv | "" | Named skills. Currently supported: `splunk_search`. |
-| `depends_on` | no | csv | "" | Single-shot DAG edges; ignored by agentic agents. |
 
 See `packages/agent-mesh/src/main/resources/splunk/README/agents.conf.spec` for
 the canonical Splunk spec.
@@ -145,13 +144,16 @@ Invoked **only** via a Threat Hunter `handoff`. Its markdown output is fed back
 to the Threat Hunter, which summarizes it through `result_summary` + `final`. It
 never appears in the UI as a peer agent.
 
-### Disabled agents (retained, `enabled = 0`)
+### Retired personas
 
-`triage`, `timeline`, `blast_radius`, `detection_gap`, `response` — the original
-SOC personas. They are kept in `agents.conf` for easy revival but are not run.
-The Threat Hunter now narrates triage, timeline, blast-radius, detection, and
-response inline as part of its event stream. See `docs/legacy/HISTORY.md` for
-why the 7-agent mesh collapsed to one visible agent.
+The original SOC mesh had five more agents — `triage`, `timeline`,
+`blast_radius`, `detection_gap`, `response`. They were removed from
+`agents.conf` when the project committed to the single-Threat-Hunter model; the
+Threat Hunter now narrates triage, timeline, blast-radius, detection, and
+response inline as part of its event stream. To bring one back, add a new
+`agent_mode = agentic` stanza (the old single-shot/markdown form no longer
+runs). See `docs/legacy/HISTORY.md` for why the 7-agent mesh collapsed to one
+visible agent.
 
 ---
 
