@@ -83,28 +83,49 @@ def run_splunk_search_artifact(
     preferred_view: str | None = None,
     viz_hint: str | None = None,
     timeout_seconds: float | None = None,
+    progress_callback: Callable[[dict], None] | None = None,
 ) -> dict:
     artifact_id = f"artifact-{uuid.uuid4().hex[:12]}"
     started_at = now_iso()
-    client = client_factory()
-    if client is None:
-        return _artifact(
+    revision = 0
+    last_result: SearchResult | None = None
+    last_artifact: dict | None = None
+
+    def emit(result: SearchResult) -> dict:
+        nonlocal last_artifact, last_result, revision
+        if result == last_result and last_artifact is not None:
+            return last_artifact
+        revision += 1
+        artifact = _artifact(
             artifact_id,
             agent_id,
             title,
             spl,
             earliest,
             latest,
-            SearchResult(spl=spl, status="error", error="No Splunk token available for this investigation."),
+            result,
             started_at,
             preferred_view,
             viz_hint,
+            revision,
+        )
+        if progress_callback:
+            progress_callback(artifact)
+        last_result = result
+        last_artifact = artifact
+        return artifact
+
+    emit(SearchResult(spl=spl, status="pending"))
+    client = client_factory()
+    if client is None:
+        return emit(
+            SearchResult(spl=spl, status="error", error="No Splunk token available for this investigation.")
         )
     kwargs: dict = {"earliest": earliest, "latest": latest}
     if timeout_seconds is not None:
         kwargs["timeout_seconds"] = timeout_seconds
-    result = client.run_search(spl, **kwargs)
-    return _artifact(artifact_id, agent_id, title, spl, earliest, latest, result, started_at, preferred_view, viz_hint)
+    result = client.run_search(spl, on_update=emit, **kwargs)
+    return emit(result)
 
 
 def _artifact(
@@ -118,6 +139,7 @@ def _artifact(
     started_at: str,
     preferred_view: str | None,
     viz_hint: str | None = None,
+    revision: int = 1,
 ) -> dict:
     rows = result.events
     fields = result.fields
@@ -138,6 +160,7 @@ def _artifact(
         "started_at": started_at,
         "completed_at": now_iso() if result.status in ("done", "error") else None,
         "visualization": infer_visualization(spl, fields, rows, preferred_view, viz_hint),
+        "_revision": revision,
     }
 
 
@@ -158,4 +181,3 @@ def _is_number(value: object) -> bool:
         return True
     except (TypeError, ValueError):
         return False
-

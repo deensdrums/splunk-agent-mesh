@@ -177,7 +177,12 @@ class AgenticLLMAgent:
 
             iteration_artifacts: list[dict] = []
             if action_type == "splunk_search":
-                result_payload, artifact = self._execute_search(last_event, earliest)
+                def _search_progress(artifact_update: dict) -> None:
+                    self._emit_progress(
+                        progress_callback, all_events, [artifact_update], model_used, started, iteration_count,
+                    )
+
+                result_payload, artifact = self._execute_search(last_event, earliest, _search_progress)
                 if artifact:
                     iteration_artifacts.append(artifact)
                     all_artifacts.append(artifact)
@@ -310,7 +315,12 @@ class AgenticLLMAgent:
             "payload": {"reason": "max_iterations_reached"},
         }
 
-    def _execute_search(self, event: dict, default_earliest: str) -> tuple[dict, dict | None]:
+    def _execute_search(
+        self,
+        event: dict,
+        default_earliest: str,
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> tuple[dict, dict | None]:
         """Execute a splunk_search event's payload. Returns (llm_result, artifact)."""
         payload = event.get("payload", {})
         spl = payload.get("query", "")
@@ -331,6 +341,7 @@ class AgenticLLMAgent:
             client_factory=self.splunk_client_factory,
             viz_hint=viz_hint,
             timeout_seconds=30.0,
+            progress_callback=progress_callback,
         )
 
         rows = artifact.get("rows", [])

@@ -10,10 +10,12 @@ import logging
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from .investigation_models import audit_event, now_iso
-from .request_context import RequestContext
+
+if TYPE_CHECKING:
+    from .request_context import RequestContext
 
 logger = logging.getLogger(__name__)
 
@@ -143,9 +145,19 @@ class InvestigationJobStore:
                 current["agent_order"] = update["agent_order"]
             if "agents" in update:
                 current.setdefault("agents", {}).update(update["agents"])
-            for key in ("sections", "artifacts", "audit"):
+            for key in ("sections", "audit"):
                 if key in update:
                     current.setdefault(key, []).extend(update[key])
+            if "artifacts" in update:
+                artifacts = current.setdefault("artifacts", [])
+                by_id = {artifact.get("id"): index for index, artifact in enumerate(artifacts)}
+                for artifact in update["artifacts"]:
+                    artifact_id = artifact.get("id")
+                    if artifact_id in by_id:
+                        artifacts[by_id[artifact_id]] = artifact
+                    else:
+                        by_id[artifact_id] = len(artifacts)
+                        artifacts.append(artifact)
 
 
 JOB_STORE = InvestigationJobStore()

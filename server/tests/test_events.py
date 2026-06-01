@@ -153,6 +153,26 @@ def test_loop_executes_search_then_final():
     assert len(llm.calls) == 2
 
 
+def test_loop_emits_pending_search_artifact_before_final_results():
+    search = _envelope(
+        {
+            "type": "splunk_search",
+            "title": "Failed logins",
+            "text": "checking",
+            "payload": {"query": "index=auth action=failure | stats count by user", "type": "table"},
+        },
+    )
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    updates = []
+
+    agent = AgenticLLMAgent(_config(), FakeLLM([search, final]), lambda: FakeSplunk())
+    agent.run({"description": "investigate auth"}, progress_callback=lambda output, artifacts: updates.extend(artifacts))
+
+    assert [artifact["status"] for artifact in updates[:2]] == ["pending", "done"]
+    assert updates[0]["id"] == updates[1]["id"]
+    assert updates[0]["_revision"] < updates[1]["_revision"]
+
+
 def test_loop_recovers_from_malformed_then_finishes():
     final = _envelope({"type": "final", "title": "Done", "text": "ok", "payload": {}})
     llm = FakeLLM(["not json at all", final])

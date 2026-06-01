@@ -77,6 +77,7 @@ export interface SearchArtifact {
     started_at?: string;
     completed_at?: string | null;
     visualization: VisualizationSpec;
+    _revision?: number;
 }
 
 export type Artifact = SearchArtifact;
