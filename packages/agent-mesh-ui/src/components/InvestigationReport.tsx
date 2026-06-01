@@ -40,6 +40,17 @@ const fadeSlideIn = keyframes`
     to   { opacity: 1; transform: translateY(0); }
 `;
 
+const thinkingPulse = keyframes`
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+`;
+
+const thinkingDots = keyframes`
+    0% { content: '.'; }
+    33% { content: '..'; }
+    66%, 100% { content: '...'; }
+`;
+
 // ---- Status tones ----
 // Statuses map to a small semantic tone; the tone resolves to a theme color
 // inside the styled template (the same pattern AgentStatusBadge uses), which
@@ -155,6 +166,24 @@ const ScrollArea = styled.div`
 
 const RevealItem = styled.div`
     animation: ${fadeSlideIn} 150ms ease-out;
+`;
+
+const ThinkingIndicator = styled.div`
+    padding: ${variables.spacingMedium} 0 ${variables.spacingLarge};
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeLarge};
+    font-weight: ${variables.fontWeightSemiBold};
+    letter-spacing: 0.04em;
+    text-align: center;
+    animation: ${thinkingPulse} 1.5s ease-in-out infinite;
+
+    &::after {
+        display: inline-block;
+        min-width: 1.5em;
+        content: '.';
+        text-align: left;
+        animation: ${thinkingDots} 1.2s steps(1, end) infinite;
+    }
 `;
 
 const EmptyBody = styled.div`
@@ -306,12 +335,15 @@ const AgentTranscript: React.FC<{
         // Artifacts not tied to a search event (defensive) only show once every
         // event is revealed, so none appears before its search card.
         const leftover = revealed >= total ? artifacts.slice(searchIndex) : [];
+        const finalRevealed = visible.some((event) => event.type === 'final');
+        const showThinking = isActive && !finalRevealed;
         body = (
             <>
                 {rendered}
                 {leftover.map((artifact) => (
-                    <ArtifactRenderer key={artifact.id} artifact={artifact} />
-                ))}
+                        <ArtifactRenderer key={artifact.id} artifact={artifact} />
+                    ))}
+                {showThinking && <ThinkingIndicator data-testid="thinking-indicator">Thinking</ThinkingIndicator>}
             </>
         );
     }

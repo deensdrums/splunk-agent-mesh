@@ -37,6 +37,13 @@ const EVENT_TWO: AgentEvent = {
     payload: { confidence: 'high' },
 };
 
+const FINAL_EVENT: AgentEvent = {
+    type: 'final',
+    title: 'Investigation complete',
+    text: 'The investigation is complete.',
+    payload: {},
+};
+
 function resultWithEvents(events: AgentEvent[]): InvestigationResult {
     return {
         id: 'inv-test',
@@ -167,5 +174,28 @@ describe('InvestigationReport console', () => {
         expect(within(scrollArea).getAllByText('index=endpoint process_name=powershell.exe | timechart count')).toHaveLength(1);
         expect(within(scrollArea).getByText('Column')).toBeInTheDocument();
         expect(within(scrollArea).getByText('timechart · done · SID test-sid')).toBeInTheDocument();
+    });
+
+    test('shows thinking while active and hides it after the final event is revealed', () => {
+        const { rerender } = render(
+            <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />
+        );
+        act(() => {
+            jest.advanceTimersByTime(300);
+        });
+        expect(screen.getByTestId('thinking-indicator')).toHaveTextContent('Thinking');
+
+        rerender(
+            <InvestigationReport
+                descriptors={[]}
+                result={resultWithEvents([EVENT_ONE, FINAL_EVENT])}
+                running
+                onClear={jest.fn()}
+            />
+        );
+        act(() => {
+            jest.advanceTimersByTime(300);
+        });
+        expect(screen.queryByTestId('thinking-indicator')).not.toBeInTheDocument();
     });
 });
