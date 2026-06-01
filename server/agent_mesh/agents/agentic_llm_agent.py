@@ -191,12 +191,24 @@ class AgenticLLMAgent:
                     Message(role="user", content=json.dumps({"splunk_search_result": result_payload}, default=str))
                 )
             elif action_type == "handoff":
+                # Surface "delegating" BEFORE the blocking sub-agent call — it is
+                # the one window the UI cannot otherwise observe (the harness
+                # streams nothing until the sub-agent returns).
+                self._emit_progress(
+                    progress_callback, all_events, [], model_used, started, iteration_count, phase="delegating",
+                )
                 handoff_result = self._invoke_subagent(last_event, all_events)
                 messages.append(Message(role="assistant", content=response.content))
                 messages.append(Message(role="user", content=handoff_result))
 
             iteration_count += 1
-            self._emit_progress(progress_callback, all_events, iteration_artifacts, model_used, started, iteration_count)
+            # The phase describes what the agent will do next: interpret the
+            # search rows, or finalize after the report came back.
+            next_phase = {"splunk_search": "interpreting", "handoff": "finalizing"}.get(action_type)
+            self._emit_progress(
+                progress_callback, all_events, iteration_artifacts, model_used, started, iteration_count,
+                phase=next_phase,
+            )
 
             if action_type is None:
                 # Last event was final (or purely informational with no action
@@ -242,9 +254,14 @@ class AgenticLLMAgent:
         model: str,
         started: str,
         iteration: int,
+        phase: str | None = None,
     ) -> None:
         if not progress_callback:
             return
+        # `phase` is a transient hint of what the harness is doing right now
+        # (e.g. delegating to the sub-agent) so the UI can label its working
+        # indicator truthfully. It is advisory; the UI falls back to inference
+        # when it is absent.
         progress_callback(
             {
                 "agent_id": self.config.id,
@@ -256,6 +273,7 @@ class AgenticLLMAgent:
                 "started_at": started,
                 "completed_at": None,
                 "error": None,
+                "phase": phase,
                 "_iteration": iteration,
             },
             new_artifacts,
@@ -278,6 +296,7 @@ class AgenticLLMAgent:
         count.
         """
         messages.append(Message(role="user", content=FINALIZE_INSTRUCTION))
+        self._emit_progress(progress_callback, all_events, [], model_used, started, iteration_count, phase="finalizing")
         try:
             response = self.llm.complete(
                 messages=[Message(role="system", content=self.config.system_prompt), *messages],

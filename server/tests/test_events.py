@@ -263,3 +263,45 @@ def test_handoff_invokes_subagent_then_threat_hunter_summarizes():
 
     assert [e["type"] for e in output["events"]] == ["narration", "handoff", "result_summary", "final"]
     assert len(llm.calls) == 3
+
+
+def _captured_phases(agent: AgenticLLMAgent) -> list:
+    phases: list = []
+    agent.run({"description": "x"}, progress_callback=lambda output, _artifacts: phases.append(output.get("phase")))
+    return phases
+
+
+def test_handoff_emits_delegating_before_finalizing():
+    handoff = _envelope(
+        {"type": "narration", "title": "Found it", "text": "compromise", "payload": {}},
+        {"type": "handoff", "title": "Report", "text": "go",
+         "payload": {"sub_agent": "executive_brief", "task": "summarize_findings"}},
+    )
+    final = _envelope(
+        {"type": "result_summary", "title": "Report", "text": "summarized", "payload": {}},
+        {"type": "final", "title": "Done", "text": "final", "payload": {}},
+    )
+    llm = FakeLLM([handoff, "## Executive summary\nHigh severity.", final])
+    reporting = _config(id="executive_brief", agent_role="subagent", agent_mode="single_shot")
+    agent = AgenticLLMAgent(_config(), llm, lambda: None, {"executive_brief": reporting})
+
+    phases = _captured_phases(agent)
+
+    # "delegating" surfaces before the blocking sub-agent call; "finalizing"
+    # after it (while the threat hunter writes the summary).
+    assert "delegating" in phases
+    assert "finalizing" in phases
+    assert phases.index("delegating") < phases.index("finalizing")
+
+
+def test_search_turn_emits_interpreting_phase():
+    search = _envelope(
+        {"type": "narration", "title": "Start", "text": "looking", "payload": {}},
+        {"type": "splunk_search", "title": "Logins", "text": "checking",
+         "payload": {"query": "index=auth | stats count", "type": "table"}},
+    )
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    llm = FakeLLM([search, final])
+    agent = AgenticLLMAgent(_config(), llm, lambda: FakeSplunk())
+
+    assert "interpreting" in _captured_phases(agent)

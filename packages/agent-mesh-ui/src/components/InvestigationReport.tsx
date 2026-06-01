@@ -6,6 +6,7 @@ import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import {
     AgentDescriptor,
+    AgentEvent,
     AgentOutput,
     AgentRunStatus,
     Artifact,
@@ -244,6 +245,49 @@ const Placeholder = styled.div`
     color: ${variables.contentColorMuted};
 `;
 
+// Authoritative labels when the backend reports its phase. Preferred over the
+// client-side inference below, since the harness knows exactly what it's doing —
+// including the sub-agent ("delegating") window the UI can't otherwise observe.
+const PHASE_LABELS: Record<string, string> = {
+    delegating: 'Consulting the reporting agent',
+    interpreting: 'Interpreting results',
+    finalizing: 'Finalizing',
+    investigating: 'Investigating',
+};
+
+function phaseLabel(phase?: string | null): string | null {
+    return phase ? PHASE_LABELS[phase] ?? null : null;
+}
+
+/**
+ * Context-aware label for the working indicator, derived from the last
+ * *revealed* event (so it stays coherent with the visible transcript) and, for
+ * searches, the artifact's status. Returns `null` to hide the indicator
+ * entirely — e.g. while a search is running, since the search card already
+ * shows its own progress.
+ */
+function thinkingLabel(visible: AgentEvent[], artifacts: Artifact[]): string | null {
+    if (visible.length === 0) {
+        return 'Investigating';
+    }
+    const last = visible[visible.length - 1];
+    if (last.type === 'splunk_search') {
+        // The Nth revealed search maps to the Nth artifact (one search per turn).
+        const searchCount = visible.filter((event) => event.type === 'splunk_search').length;
+        const artifact = artifacts[searchCount - 1];
+        if (!artifact || artifact.status === 'pending' || artifact.status === 'running') {
+            return null; // search in flight — its card carries the running state
+        }
+        return 'Interpreting results'; // rows are back; the agent is reading them
+    }
+    // After a handoff the sub-agent has already responded (the harness only
+    // streams the handoff event once it returns), so a final answer is next.
+    if (last.type === 'handoff' || (last.type === 'result_summary' && visible.some((e) => e.type === 'handoff'))) {
+        return 'Finalizing';
+    }
+    return 'Investigating';
+}
+
 /**
  * The threat hunter's transcript: an open, scrollable region of structured
  * event blocks (with inline search artifacts) plus a persistent status footer.
@@ -336,14 +380,16 @@ const AgentTranscript: React.FC<{
         // event is revealed, so none appears before its search card.
         const leftover = revealed >= total ? artifacts.slice(searchIndex) : [];
         const finalRevealed = visible.some((event) => event.type === 'final');
-        const showThinking = isActive && !finalRevealed;
+        // Prefer the backend's reported phase; fall back to client-side inference.
+        const label = phaseLabel(output?.phase) ?? thinkingLabel(visible, artifacts);
+        const showThinking = isActive && !finalRevealed && label !== null;
         body = (
             <>
                 {rendered}
                 {leftover.map((artifact) => (
                         <ArtifactRenderer key={artifact.id} artifact={artifact} />
                     ))}
-                {showThinking && <ThinkingIndicator data-testid="thinking-indicator">Thinking</ThinkingIndicator>}
+                {showThinking && <ThinkingIndicator data-testid="thinking-indicator">{label}</ThinkingIndicator>}
             </>
         );
     }
