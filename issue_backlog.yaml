@@ -1,0 +1,293 @@
+stories:
+- order: 1
+  story_id: DEMO-001
+  theme: Judge Demo
+  story: Define the supported judge demo runtime
+  description: 'Decide and document the environment a judge is expected to run: an existing Splunk instance plus a bootstrap script, or a containerized path. Treat Docker as a decision to validate, not an assumed answer, because a complete Splunk container path introduces licensing, image availability, app installation, port, and token-bootstrap constraints.'
+  acceptance_criteria:
+  - A short decision record names the supported path and prerequisites.
+  - The record explicitly answers whether Docker is supported, optional, or out of scope.
+  - The chosen path identifies how Splunk Web, the app package, uvicorn, and required credentials are initialized.
+  - The path is realistic for a judge starting from a clean checkout.
+  feasibility: High as a focused spike. A host bootstrap path is likely the simplest default; Docker remains viable only if the judging environment permits it.
+  points: 3
+  dependencies: []
+  origin_thought_ids:
+  - BD-02
+  recommendation: Do first
+  status: Proposed
+  reviewer_notes: ''
+- order: 2
+  story_id: AUTH-001
+  theme: Authentication
+  story: Separate runtime credential modes and remove silent token coupling
+  description: Make the sidecar authentication model explicit. Today the presence of SPLUNK_TOKEN silently activates Splunk-backed settings storage and also affects conf reads. Keep delegated browser-session access for browser search polling, while defining a clear sidecar policy for app configuration and the LLM provider key.
+  acceptance_criteria:
+  - Credential mode is configured explicitly rather than inferred only from SPLUNK_TOKEN presence.
+  - Browser search polling continues to use the analyst Splunk Web session through the __raw proxy.
+  - The sidecar does not require the analyst browser token to read or store the LLM API key.
+  - Startup logs identify the selected credential mode without printing secrets.
+  - 401 and 403 failures are surfaced as authentication or authorization errors rather than generic 502 errors.
+  feasibility: High. This addresses the current overloaded SPLUNK_TOKEN behavior and reduces demo fragility. For the POC, an env-backed sidecar API key is the cleanest default.
+  points: 5
+  dependencies:
+  - DEMO-001
+  origin_thought_ids:
+  - BD-01
+  - BD-02
+  recommendation: Do early
+  status: Proposed
+  reviewer_notes: ''
+- order: 3
+  story_id: DEMO-002
+  theme: Judge Demo
+  story: Add a one-command bootstrap and preflight for judges
+  description: Provide a script for the supported demo runtime that builds or links the Splunk app, starts uvicorn, validates prerequisites, and prints the exact Splunk Web URL to open. Fail early with useful instructions when configuration is missing.
+  acceptance_criteria:
+  - A judge can run one documented command from a clean checkout.
+  - The command validates required tools, ports, Splunk reachability, app linkage or installation, and required environment values.
+  - The command starts uvicorn and reports a health-check result.
+  - Failures identify the missing prerequisite and the corrective action.
+  - The documentation includes shutdown and rerun instructions.
+  feasibility: High after DEMO-001. The existing build/link tooling and uvicorn entry point provide most of the pieces.
+  points: 8
+  dependencies:
+  - DEMO-001
+  - AUTH-001
+  origin_thought_ids:
+  - BD-01
+  - BD-02
+  recommendation: Do early
+  status: Proposed
+  reviewer_notes: ''
+- order: 4
+  story_id: DEMO-003
+  theme: Judge Demo
+  story: Harden the deterministic demo mode
+  description: Turn the existing backend canned demo path into a judge-ready mode with deterministic events and chart artifacts that render without a live LLM call or unpredictable search data. Prefer the backend fixture as the authoritative source instead of relying on duplicated frontend fallback data.
+  acceptance_criteria:
+  - Demo mode can complete without an external LLM API call.
+  - The demo produces a representative investigation timeline and at least one chart artifact with guaranteed rows.
+  - The UI clearly labels the run as demo data.
+  - A smoke test verifies start, SSE completion, and artifact rendering.
+  - The authoritative fixture location is documented and duplicate fallback behavior is removed or explicitly justified.
+  feasibility: High. A backend deterministic demo already exists; this story strengthens it and verifies the full path.
+  points: 5
+  dependencies:
+  - DEMO-002
+  origin_thought_ids:
+  - BD-02
+  recommendation: Do early
+  status: Proposed
+  reviewer_notes: ''
+- order: 5
+  story_id: UI-001
+  theme: Console UI
+  story: Convert the investigation view into a full-bleed console shell
+  description: Remove the Splunk Agentic Mesh page heading and use the available area directly beneath the Splunk ribbon. The investigation console should occupy the full page width and height, with scrolling constrained to the event stream instead of the outer document.
+  acceptance_criteria:
+  - The redundant page heading and tagline are removed.
+  - The console fills the available viewport beneath the Splunk ribbon on a modern laptop screen.
+  - The document body does not scroll during normal investigation use.
+  - Only the event-stream area scrolls as events accumulate.
+  - The layout is tested at laptop and 2K desktop viewport sizes and does not show two vertical scrollbars.
+  feasibility: High. The current UI is already moving toward a viewport-based workbench; the remaining work is primarily shell layout and wrapper CSS.
+  points: 5
+  dependencies: []
+  origin_thought_ids:
+  - BD-04
+  recommendation: Do next
+  status: Proposed
+  reviewer_notes: ''
+- order: 6
+  story_id: UI-002
+  theme: Console UI
+  story: Replace top-level tabs with console-native controls
+  description: Remove the Investigation, Settings, and About tabs from the main workspace. Keep investigation as the primary surface, expose settings through a gear control, and relocate About content to a secondary affordance.
+  acceptance_criteria:
+  - The primary page no longer renders the current top-level tab bar.
+  - A visible gear control opens settings in a modal, drawer, or similarly contained surface.
+  - Closing settings returns the analyst to the same investigation state.
+  - About content remains reachable without consuming persistent workspace height.
+  - Keyboard focus and close behavior work for the chosen overlay pattern.
+  feasibility: High. Existing Settings and About components can be reused inside a modal or drawer.
+  points: 5
+  dependencies:
+  - UI-001
+  origin_thought_ids:
+  - BD-04
+  recommendation: Do next
+  status: Proposed
+  reviewer_notes: ''
+- order: 7
+  story_id: CFG-001
+  theme: Configuration
+  story: Make model configuration source-of-truth explicit
+  description: Align the model shown in settings with the model the harness actually uses. The current agent configuration is driven by agents.conf, while the settings surface can imply a separate model choice. Decide whether the gear settings editor writes an app-local agents.conf override or presents the effective conf model read-only until write permissions are deliberately implemented.
+  acceptance_criteria:
+  - The UI displays the effective harness model from one authoritative source.
+  - 'The selected policy is documented: editable conf override or read-only effective value.'
+  - If editing is supported, writes use an app-local stanza override with clear RBAC and error handling.
+  - A changed model is used by subsequent harness runs without requiring an undocumented manual edit.
+  - The LLM API key remains separate from model selection.
+  feasibility: Medium. Reading the effective value is straightforward. Writing Splunk configuration from the UI is feasible but needs an intentional authorization and reload policy.
+  points: 8
+  dependencies:
+  - AUTH-001
+  - UI-002
+  origin_thought_ids:
+  - BD-03
+  recommendation: Do after auth policy
+  status: Proposed
+  reviewer_notes: ''
+- order: 8
+  story_id: STATE-001
+  theme: Durable Sessions
+  story: Design the durable investigation record in Splunk KV Store
+  description: Define the durable session model before implementing chat-style history. Capture investigation metadata, ownership, status, emitted events, artifact metadata, and revision behavior. Avoid storing secrets and avoid duplicating large preview-result row sets unless a specific retention requirement calls for it.
+  acceptance_criteria:
+  - A schema defines investigation ID, owner, timestamps, status, request, emitted events, artifact metadata, and version or revision fields.
+  - The design names what is not stored, including secrets and transient preview rows.
+  - Retention, per-user visibility, cancellation, and partial-run behavior are documented.
+  - The design explains checkpoint timing after event emission and how concurrent updates are handled.
+  - The required KV Store collection configuration is identified.
+  feasibility: High as a design story. It is the required foundation for durable history and URL restoration.
+  points: 5
+  dependencies: []
+  origin_thought_ids:
+  - BD-05
+  - BD-06
+  - BD-07
+  recommendation: Design before coding
+  status: Proposed
+  reviewer_notes: ''
+- order: 9
+  story_id: STATE-002
+  theme: Durable Sessions
+  story: Persist investigation snapshots after meaningful event updates
+  description: Replace the current process-only job state as the sole record of an investigation by checkpointing durable state to Splunk KV Store after each emitted event or meaningful artifact update. Keep the in-memory store as an execution cache where useful.
+  acceptance_criteria:
+  - A KV Store repository writes and reads investigation records using the schema from STATE-001.
+  - A new investigation receives a durable GUID before streaming begins.
+  - Each emitted event or artifact-state transition is checkpointed without blocking SSE delivery indefinitely.
+  - Completed, failed, cancelled, and timed-out runs retain a final durable status.
+  - Restarting uvicorn does not erase completed investigation history.
+  - Persistence failures are logged and represented clearly without silently corrupting the active stream.
+  feasibility: Medium-high but substantial. The current job store is process-local, so this is a cross-cutting backend change with error-handling and consistency decisions.
+  points: 13
+  dependencies:
+  - STATE-001
+  - AUTH-001
+  origin_thought_ids:
+  - BD-05
+  - BD-06
+  - BD-07
+  recommendation: Implement incrementally
+  status: Proposed
+  reviewer_notes: ''
+- order: 10
+  story_id: STATE-003
+  theme: Durable Sessions
+  story: Expose session list and load APIs with ownership checks
+  description: "Add backend endpoints that allow the UI to list investigations and load a selected investigation from KV Store. Apply the selected POC ownership policy consistently so one analyst does not accidentally browse another analyst\u2019s session history."
+  acceptance_criteria:
+  - The API lists sessions in reverse chronological order with summary fields suitable for a sidebar.
+  - The API loads one investigation by GUID.
+  - The API enforces the documented ownership or visibility policy.
+  - Missing, inaccessible, and malformed IDs return distinct useful errors.
+  - API responses do not contain stored secrets or unnecessary search preview rows.
+  feasibility: High once the durable repository exists.
+  points: 5
+  dependencies:
+  - STATE-002
+  origin_thought_ids:
+  - BD-05
+  - BD-07
+  recommendation: Do after persistence
+  status: Proposed
+  reviewer_notes: ''
+- order: 11
+  story_id: UI-003
+  theme: Console UI
+  story: Add a collapsible investigation history sidebar
+  description: Add a collapsed-by-default left-side session rail inspired by cloud consoles and chat history. It should preserve console workspace space while making prior investigations easy to find and reopen.
+  acceptance_criteria:
+  - A left-side control expands and collapses the session list.
+  - The list is populated from the durable-session API and ordered by recent activity.
+  - Each item shows a concise label, status, and useful timestamp.
+  - Selecting a prior session restores its event timeline and artifacts.
+  - The sidebar does not introduce outer-page scrolling or obscure the active console at supported viewport sizes.
+  feasibility: High after STATE-003. The main complexity is restoring artifacts and preserving the full-bleed layout.
+  points: 8
+  dependencies:
+  - UI-001
+  - STATE-003
+  origin_thought_ids:
+  - BD-05
+  recommendation: Do after persistence API
+  status: Proposed
+  reviewer_notes: ''
+- order: 12
+  story_id: STATE-004
+  theme: Durable Sessions
+  story: Make investigations URL-addressable
+  description: Reflect the selected durable investigation in the Splunk page URL using a query parameter such as Investigations?id=<investigation-guid>. On page load, restore the matching session through the durable-session API.
+  acceptance_criteria:
+  - Starting or selecting an investigation updates the URL query parameter.
+  - Loading a URL with a valid id restores the corresponding session.
+  - Browser back and forward navigation select the expected session.
+  - Invalid, missing, and inaccessible IDs show a useful state without breaking the console.
+  - The implementation works within the Splunk app page routing model.
+  feasibility: High after STATE-003. A query parameter is likely simpler and more compatible with the Splunk page wrapper than a new route.
+  points: 5
+  dependencies:
+  - STATE-003
+  origin_thought_ids:
+  - BD-07
+  recommendation: Do after persistence API
+  status: Proposed
+  reviewer_notes: ''
+- order: 13
+  story_id: REL-001
+  theme: Reliability
+  story: Define stream resume behavior for restored sessions
+  description: Clarify what happens when an analyst refreshes or reopens a still-running investigation. The current streaming and token state is process-oriented; durable sessions need an explicit policy for reconnecting to active work and displaying the last durable checkpoint.
+  acceptance_criteria:
+  - The UI distinguishes a restored completed session from a restored active or interrupted session.
+  - Refreshing a running investigation either reconnects to its stream or clearly shows the last durable checkpoint and recovery limitation.
+  - Stream signing secret behavior is documented for uvicorn restarts.
+  - The chosen POC limitation or implementation is covered by a test.
+  feasibility: Medium. This can begin as an explicit limitation, but it should not remain ambiguous once durable sessions are visible in the UI.
+  points: 5
+  dependencies:
+  - STATE-002
+  - STATE-004
+  origin_thought_ids:
+  - BD-06
+  - BD-07
+  recommendation: Define before polish
+  status: Proposed
+  reviewer_notes: ''
+- order: 14
+  story_id: DOC-001
+  theme: Documentation
+  story: Update setup documentation to match the selected auth and demo paths
+  description: Remove ambiguity from setup instructions after the auth and judge-demo decisions. Explain delegated browser-session search polling separately from uvicorn configuration and LLM credential handling.
+  acceptance_criteria:
+  - Documentation names each credential, its purpose, and where it is supplied.
+  - Documentation distinguishes browser-to-Splunk __raw search polling from uvicorn-side actions.
+  - The one-command demo path is the primary quick start.
+  - Known POC security limitations are stated directly.
+  - A fresh-checkout walkthrough has been exercised successfully.
+  feasibility: High. This should land with the implementation work rather than remain a follow-up note.
+  points: 3
+  dependencies:
+  - AUTH-001
+  - DEMO-002
+  - DEMO-003
+  origin_thought_ids:
+  - BD-01
+  - BD-02
+  recommendation: Ship with demo path
+  status: Proposed
+  reviewer_notes: ''
