@@ -10,11 +10,6 @@ load_dotenv()
 # Set AGENT_MESH_DEV_MODE=1 to allow DevSettingsStore to accept keys.
 DEV_MODE: bool = os.getenv("AGENT_MESH_DEV_MODE", "0") == "1"
 
-# By default the Splunk Passwords store activates whenever SPLUNK_TOKEN is set.
-# AGENT_MESH_USE_SPLUNK_STORE can override that explicitly:
-#   "1" / "true" / "yes" -> force Splunk store (still requires SPLUNK_TOKEN)
-#   "0" / "false" / "no" -> force dev store even when SPLUNK_TOKEN is set
-#   unset                -> auto (Splunk if token, dev otherwise)
 def _parse_override(value: str | None) -> bool | None:
     if value is None:
         return None
@@ -26,7 +21,22 @@ def _parse_override(value: str | None) -> bool | None:
     return None
 
 
-USE_SPLUNK_STORE_OVERRIDE: bool | None = _parse_override(os.getenv("AGENT_MESH_USE_SPLUNK_STORE"))
+def _parse_choice(name: str, default: str, allowed: set[str]) -> str:
+    value = os.getenv(name, default).strip().lower()
+    if value not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise ValueError(f"{name} must be one of: {choices}")
+    return value
+
+
+# Keep sidecar concerns independent. A SPLUNK_TOKEN can be available for an
+# explicitly-enabled purpose without silently switching unrelated behavior.
+SETTINGS_STORE_BACKEND: str = _parse_choice(
+    "AGENT_MESH_SETTINGS_STORE", "dev", {"dev", "splunk"}
+)
+CONF_SOURCE: str = _parse_choice(
+    "AGENT_MESH_CONF_SOURCE", "file", {"file", "splunk"}
+)
 
 # CORS origin(s) for the frontend. Comma-separated list.
 CORS_ORIGINS: list[str] = [
@@ -42,6 +52,7 @@ SPLUNK_HOST: str = os.getenv("SPLUNK_HOST", "https://localhost:8089")
 SPLUNK_TOKEN: str = os.getenv("SPLUNK_TOKEN", "")
 ALLOW_SERVICE_SEARCH_FALLBACK: bool = os.getenv("AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK", "0") == "1"
 STREAM_TOKEN_TTL_SECONDS: int = int(os.getenv("AGENT_MESH_STREAM_TOKEN_TTL_SECONDS", "14400"))
+ENV_API_KEY_CONFIGURED: bool = bool(os.getenv("AGENT_MESH_API_KEY"))
 
 # Splunk app id — used to scope REST calls (configs, passwords, search).
 SPLUNK_APP_ID: str = os.getenv("AGENT_MESH_SPLUNK_APP_ID", "splunk-agent-mesh")

@@ -153,14 +153,16 @@ yarn workspace @splunk/agent-mesh-ui run test              # frontend
 | `AGENT_MESH_API_KEY` | For LLM calls | LLM API key read by the dev settings store |
 | `AGENT_MESH_DEV_MODE` | Optional | Set `1` to allow plaintext key persistence |
 | `SPLUNK_HOST` | For live mode | Splunk REST URL (default: `https://localhost:8089`) |
-| `SPLUNK_TOKEN` | Optional | Service token — only a fallback (see below) |
+| `SPLUNK_TOKEN` | Optional | Service token for explicitly enabled sidecar Splunk REST operations |
 | `AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK` | Optional | Set `1` to allow live runs to use `SPLUNK_TOKEN` when no delegated session is present |
 | `AGENT_MESH_STREAM_TOKEN_TTL_SECONDS` | Optional | SSE stream-token lifetime (default `14400`) |
 | `AGENT_MESH_LOG_LLM` | Optional | Set `1` to log full LLM requests/responses (debugging) |
-| `AGENT_MESH_USE_SPLUNK_STORE` | Optional | Force Splunk Passwords store on/off (default: auto) |
+| `AGENT_MESH_SETTINGS_STORE` | Optional | LLM key storage: `dev` (default) or `splunk` |
+| `AGENT_MESH_CONF_SOURCE` | Optional | Agent config source: `file` (default) or `splunk` |
 
 In production the analyst's own Splunk session is delegated per request
-(see **Auth** below); `SPLUNK_TOKEN` is not the primary credential.
+(see **Auth** below); `SPLUNK_TOKEN` is not the primary credential and its
+presence alone does not enable any sidecar Splunk REST operation.
 
 ### Link into Splunk
 

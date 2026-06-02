@@ -35,13 +35,13 @@ linking; upgradable to multiple Splunk views later.
 
 ## ADR-003: SettingsStore Abstraction with DevMode Guard
 
-**Date**: 2026-05-18 · **Status**: Accepted
+**Date**: 2026-05-18 · **Status**: Superseded in part by ADR-020
 
 API keys must never be plaintext in the repo or browser. **Chosen**: abstract
 `SettingsStore` with `SplunkSecureSettingsStore` (Passwords API, production) and
 `DevSettingsStore` (reads `AGENT_MESH_API_KEY`; refuses plaintext-to-disk unless
-`AGENT_MESH_DEV_MODE=1`). The Splunk store remains stubbed in the current
-deployment.
+`AGENT_MESH_DEV_MODE=1`). Passwords API activation and sidecar credential-mode
+selection were refined by ADR-020.
 
 ---
 
@@ -291,3 +291,32 @@ load-bearing.
 via `llm.complete()` + the sub-agent lookup, not any of the above. Reviving a
 retired persona now means adding an `agent_mode = agentic` stanza; the old
 single-shot/markdown form no longer runs. Net removal of ~340 lines.
+
+---
+
+## ADR-020: Explicit Sidecar Credential Modes
+
+**Date**: 2026-06-02 · **Status**: Accepted (refines ADR-003 and ADR-014)
+
+**Context**: The presence of a service `SPLUNK_TOKEN` silently selected both
+Splunk Passwords API storage and REST-backed `agents.conf` reads. A token added
+for one purpose could unexpectedly change unrelated behavior. An expired token
+also turned Passwords API authentication failures into misleading `502`
+responses.
+
+**Chosen**: keep sidecar features independent and opt-in:
+- `AGENT_MESH_SETTINGS_STORE=dev|splunk` selects LLM-key storage (`dev` by
+  default).
+- `AGENT_MESH_CONF_SOURCE=file|splunk` selects the agent-conf source (`file` by
+  default).
+- `AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK=1` remains the separate opt-in for
+  service-token search fallback.
+
+`SPLUNK_TOKEN` is required by the `splunk` modes but its presence alone enables
+nothing. Splunk Passwords API `401` and `403` responses remain `401` and `403`
+at the sidecar API boundary.
+
+**Consequences**: the POC defaults to env-backed `AGENT_MESH_API_KEY`, repo-file
+agent configuration, and delegated analyst search sessions. Startup logs show
+the selected modes and whether credentials are configured without printing
+secret values.

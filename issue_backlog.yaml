@@ -38,8 +38,8 @@ stories:
   - BD-01
   - BD-02
   recommendation: Do early
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Implemented explicit AGENT_MESH_SETTINGS_STORE=dev|splunk and AGENT_MESH_CONF_SOURCE=file|splunk selectors, both defaulting to the POC-safe local mode. SPLUNK_TOKEN no longer silently selects settings storage or conf REST reads. Delegated browser-session polling remains unchanged; service-search fallback remains separately gated. Startup logging reports selected modes without secret values. Splunk Passwords API 401/403 responses are preserved at the sidecar API boundary. Covered by server/tests/test_auth_modes.py and documented in ADR-020.'
 
 - order: 3
   story_id: DEMO-002
