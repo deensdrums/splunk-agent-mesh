@@ -112,6 +112,20 @@ docs/
 
 ## Setup
 
+### Quick start (judges)
+
+From a clean checkout (macOS/Linux):
+
+```bash
+./scripts/bootstrap.sh
+```
+
+This preflights prerequisites, starts the backend + a standalone UI, and prints
+`http://localhost:8080` — open it and click **"Load Suspicious PowerShell
+Demo."** No Splunk, LLM key, or tokens required; Ctrl-C to stop. For the
+full/live experience against an existing Splunk, use `./scripts/bootstrap.sh
+full`. See `scripts/README.md` and `docs/DEMO_RUNTIME.md`.
+
 ### Prerequisites
 - Node.js >= 22
 - Yarn >= 1.22
