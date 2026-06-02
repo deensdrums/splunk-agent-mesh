@@ -61,8 +61,8 @@ stories:
   - BD-01
   - BD-02
   recommendation: Do early
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Implemented scripts/bootstrap.sh with modes demo (default, Tier 1 — uvicorn :8765 + standalone UI :8080, no Splunk/key), full (Tier 2 — build+link app, live LLM + delegated Splunk search), check (preflight only), stop. Preflight validates Node>=22/Yarn/Python>=3.11/curl, required ports, and (full) AGENT_MESH_API_KEY + SPLUNK_HOME + Splunk reachability; failures name the fix. Auto-creates the venv and installs deps on first run; starts uvicorn with SPLUNK_TOKEN unset + AGENT_MESH_SETTINGS_STORE=dev/CONF_SOURCE=file (AUTH-001/DEMO-001 policy); health-checks /api/v1/health and runs a demo smoke; Ctrl-C/stop cleanup via .bootstrap/ PID files. Docs in scripts/README.md + README quick start; .bootstrap/ gitignored. Verified: bash -n, --help, and check (correctly flagged the busy :8765 with corrective hint). Full end-to-end launch is a documented manual step (could not bind :8765 while another uvicorn was running).'
 
 - order: 4
   story_id: DEMO-003
