@@ -15,8 +15,8 @@ stories:
   origin_thought_ids:
   - BD-02
   recommendation: Do first
-  status: Proposed
-  reviewer_notes: ''
+  status: Decided
+  reviewer_notes: 'Decision record at docs/DEMO_RUNTIME.md. Two-tier runtime: Tier 1 = demo mode, no Splunk (default judge path, deterministic); Tier 2 = existing Splunk + bootstrap script (DEMO-002) for full/live mode. Docker explicitly out of scope. Credential policy: env-backed AGENT_MESH_API_KEY, SPLUNK_TOKEN intentionally unset (avoids the AUTH-001 coupling). Key Tier-2 risk to validate: restmap.conf python.required=3.13 vs the judge''s Splunk bundled Python.'
 - order: 2
   story_id: AUTH-001
   theme: Authentication
