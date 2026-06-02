@@ -1,8 +1,4 @@
-"""Reads agents.conf — either via Splunk REST API or from a local file.
-
-Splunk REST is the primary path when SPLUNK_TOKEN is set. The file reader is a
-fallback for unit tests and dev environments without a running Splunkd.
-"""
+"""Reads agents.conf via an explicitly selected REST or local-file source."""
 
 from __future__ import annotations
 
@@ -184,11 +180,13 @@ class SplunkRestConfReader(ConfReader):
 
 
 def get_conf_reader() -> ConfReader:
-    """Factory: Splunk REST if SPLUNK_TOKEN is configured, else file."""
-    from .config import SPLUNK_HOST, SPLUNK_TOKEN, SPLUNK_APP_ID, AGENTS_CONF_PATHS
+    """Return the explicitly configured agents.conf reader."""
+    from .config import AGENTS_CONF_PATHS, CONF_SOURCE, SPLUNK_APP_ID, SPLUNK_HOST, SPLUNK_TOKEN
 
-    if SPLUNK_TOKEN:
+    if CONF_SOURCE == "splunk":
+        if not SPLUNK_TOKEN:
+            raise RuntimeError("AGENT_MESH_CONF_SOURCE=splunk requires SPLUNK_TOKEN.")
         logger.info("Using SplunkRestConfReader (host=%s app=%s).", SPLUNK_HOST, SPLUNK_APP_ID)
         return SplunkRestConfReader(SPLUNK_HOST, SPLUNK_TOKEN, SPLUNK_APP_ID)
-    logger.info("SPLUNK_TOKEN not set; using FileConfReader fallback.")
+    logger.info("Using FileConfReader.")
     return FileConfReader(AGENTS_CONF_PATHS)

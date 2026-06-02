@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 _LOCAL_SETTINGS_PATH = Path(__file__).parent.parent / ".agent_mesh_settings.json"
 
 
+class SplunkSettingsStoreError(RuntimeError):
+    """A failure returned by Splunk's Passwords API."""
+
+    def __init__(self, operation: str, status_code: int, detail: str):
+        super().__init__(f"Splunk passwords {operation} failed: {status_code} {detail[:200]}")
+        self.status_code = status_code
+
+
+def _raise_splunk_error(operation: str, response: httpx.Response) -> None:
+    raise SplunkSettingsStoreError(operation, response.status_code, response.text)
+
+
 def _load_local_settings() -> dict:
     if not _LOCAL_SETTINGS_PATH.exists():
         return {}
@@ -80,8 +92,8 @@ class DevSettingsStore(SettingsStore):
     """Local development store. Reads key from env var or local JSON file.
 
     Will not persist a plaintext key to disk unless AGENT_MESH_DEV_MODE=1 is set.
-    The intended production path is SplunkSecureSettingsStore — set SPLUNK_TOKEN
-    to activate it automatically.
+    Select SplunkSecureSettingsStore explicitly with
+    AGENT_MESH_SETTINGS_STORE=splunk when encrypted persistence is required.
     """
 
     def get_provider_settings(self) -> dict:
@@ -98,8 +110,9 @@ class DevSettingsStore(SettingsStore):
         if not DEV_MODE:
             msg = (
                 "Plaintext API key storage is refused. To save securely, set "
-                "SPLUNK_TOKEN to a Splunk admin token so the app can use the "
-                "Splunk Passwords REST API. For local-disk persistence (not "
+                "AGENT_MESH_SETTINGS_STORE=splunk and provide a service "
+                "SPLUNK_TOKEN so the app can use the Splunk Passwords REST "
+                "API. For local-disk persistence (not "
                 "recommended), set AGENT_MESH_DEV_MODE=1."
             )
             logger.error(msg)
@@ -195,12 +208,8 @@ class SplunkSecureSettingsStore(SettingsStore):
             if create_resp.status_code in (200, 201):
                 logger.info("API key created in Splunk Passwords (redacted: %s).", redact_key(key))
                 return
-            raise RuntimeError(
-                f"Splunk passwords create failed: {create_resp.status_code} {create_resp.text[:200]}"
-            )
-        raise RuntimeError(
-            f"Splunk passwords update failed: {update_resp.status_code} {update_resp.text[:200]}"
-        )
+            _raise_splunk_error("create", create_resp)
+        _raise_splunk_error("update", update_resp)
 
     def get_api_key(self) -> str | None:
         resp = httpx.get(
@@ -213,8 +222,7 @@ class SplunkSecureSettingsStore(SettingsStore):
         if resp.status_code == 404:
             return None
         if resp.status_code != 200:
-            logger.error("Splunk passwords read failed: %s %s", resp.status_code, resp.text[:200])
-            return None
+            _raise_splunk_error("read", resp)
         try:
             data = resp.json()
         except ValueError:
@@ -237,19 +245,20 @@ class SplunkSecureSettingsStore(SettingsStore):
         if resp.status_code in (200, 404):
             logger.info("API key cleared from Splunk Passwords.")
             return
-        raise RuntimeError(
-            f"Splunk passwords delete failed: {resp.status_code} {resp.text[:200]}"
-        )
+        _raise_splunk_error("delete", resp)
 
 
 def get_settings_store() -> SettingsStore:
     """Return the appropriate store for the current environment.
 
-    If SPLUNK_TOKEN is set, the Splunk Passwords API is used. Otherwise the
-    dev store is used. ``AGENT_MESH_USE_SPLUNK_STORE=0`` can force the dev
-    store even when a Splunk token is present (useful for offline testing).
+    Storage is selected explicitly so the presence of a service token cannot
+    silently change how the LLM API key is stored.
     """
-    from .config import SPLUNK_HOST, SPLUNK_TOKEN, SPLUNK_APP_ID, USE_SPLUNK_STORE_OVERRIDE
-    if SPLUNK_TOKEN and USE_SPLUNK_STORE_OVERRIDE is not False:
+    from .config import SETTINGS_STORE_BACKEND, SPLUNK_HOST, SPLUNK_TOKEN, SPLUNK_APP_ID
+    if SETTINGS_STORE_BACKEND == "splunk":
+        if not SPLUNK_TOKEN:
+            raise RuntimeError(
+                "AGENT_MESH_SETTINGS_STORE=splunk requires SPLUNK_TOKEN."
+            )
         return SplunkSecureSettingsStore(SPLUNK_HOST, SPLUNK_TOKEN, SPLUNK_APP_ID)
     return DevSettingsStore()

@@ -14,14 +14,14 @@ API keys go through a `SettingsStore` abstraction:
 
 ```
 SettingsStore (abstract)
-├── SplunkSecureSettingsStore   ← Splunk Passwords API (used when SPLUNK_TOKEN is set)
-└── DevSettingsStore            ← fallback when SPLUNK_TOKEN is absent
+├── SplunkSecureSettingsStore   ← Splunk Passwords API (explicit opt-in)
+└── DevSettingsStore            ← default; reads AGENT_MESH_API_KEY
 ```
 
-`get_settings_store()` activates `SplunkSecureSettingsStore` whenever
-`SPLUNK_TOKEN` is set. Force the dev store with `AGENT_MESH_USE_SPLUNK_STORE=0`.
-(`SplunkSecureSettingsStore` is currently stubbed; `DevSettingsStore` is used in
-the active deployment.)
+`get_settings_store()` uses `DevSettingsStore` by default, even when a
+`SPLUNK_TOKEN` is present. Set `AGENT_MESH_SETTINGS_STORE=splunk` explicitly to
+activate `SplunkSecureSettingsStore`; that mode also requires `SPLUNK_TOKEN`.
+The Splunk store makes real Passwords API calls.
 
 ### SplunkSecureSettingsStore (design)
 
@@ -54,10 +54,14 @@ token.
 
 ### Service-token fallback
 
-`SPLUNK_TOKEN` is used for conf reads and the Passwords store, and can act as a
-**search fallback** only when explicitly enabled with
-`AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK=1` and no delegated session is
-present. By default, a live run with no delegated session is rejected.
+`SPLUNK_TOKEN` is available to three independent, explicitly enabled features:
+
+- `AGENT_MESH_SETTINGS_STORE=splunk` uses it for the Passwords store.
+- `AGENT_MESH_CONF_SOURCE=splunk` uses it for `agents.conf` REST reads.
+- `AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK=1` allows it to act as a search
+  fallback when no delegated session is present.
+
+By default, a live run with no delegated session is rejected.
 
 ### SSE stream tokens
 
@@ -82,7 +86,7 @@ client that can set those headers would be trusted.
 
 ## Required Splunk capabilities
 
-For the backend's `SPLUNK_TOKEN` (conf + Passwords store):
+For explicitly enabled backend features using `SPLUNK_TOKEN`:
 
 - `list_storage_passwords`, `edit_storage_passwords` — credential storage
 - `rest_properties_get` / `rest_properties_set` — read conf via REST

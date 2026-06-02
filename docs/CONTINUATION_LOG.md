@@ -58,10 +58,11 @@ Demo (no LLM/Splunk): `POST /api/v1/investigations/run` with `{"demo": true}` â€
 returns a canned Threat Hunter event stream + one artifact.
 
 ### Status / known gaps
-- Tests green at last check: backend 22, frontend 16.
+- Tests green at last check: backend 30, frontend 20.
 - Single-process assumptions: in-memory job store; per-process SSE stream-token
   secret (tokens don't survive a restart). Fine for the laptop POC.
-- `SplunkSecureSettingsStore` still stubbed (DevSettingsStore active).
+- `DevSettingsStore` is the default. `SplunkSecureSettingsStore` makes real
+  Passwords API calls only when `AGENT_MESH_SETTINGS_STORE=splunk` is selected.
 - `AgentTabsPanel` / `legacy/` components are unused and slated for removal.
 
 ### Conventions

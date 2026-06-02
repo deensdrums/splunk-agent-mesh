@@ -153,9 +153,9 @@ Investigations
 ## Backend architecture
 
 **Framework**: Python FastAPI on uvicorn, port 8765.
-**Conf source**: `SplunkRestConfReader` reads agent stanzas via
-`/servicesNS/nobody/splunk-agent-mesh/configs/conf-agents`; `FileConfReader` is
-the dev/test fallback when `SPLUNK_TOKEN` is absent.
+**Conf source**: `FileConfReader` is the default. Set
+`AGENT_MESH_CONF_SOURCE=splunk` explicitly to use `SplunkRestConfReader` for
+agent stanzas via `/servicesNS/nobody/splunk-agent-mesh/configs/conf-agents`.
 **Job execution**: `InvestigationJobStore` runs investigations in a thread pool
 and the SSE endpoint streams progress.
 
@@ -208,8 +208,9 @@ The SSE stream connects directly to uvicorn with the short-lived signed
 - **Session validation**: before a live run, the backend calls
   `/authentication/current-context` to confirm the session is valid and matches
   the requesting user.
-- **Credential storage**: `SplunkSecureSettingsStore` (Passwords API) — stubbed;
-  `DevSettingsStore` is used in the current deployment.
+- **Credential storage**: `DevSettingsStore` is the default and reads
+  `AGENT_MESH_API_KEY`. Set `AGENT_MESH_SETTINGS_STORE=splunk` explicitly to
+  use `SplunkSecureSettingsStore` (Passwords API).
 
 ## How the backend talks to LLM providers
 

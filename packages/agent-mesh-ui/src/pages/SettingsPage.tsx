@@ -255,8 +255,8 @@ const SettingsPage: React.FC = () => {
                 ) : (
                     <>
                         <strong>Active storage:</strong> Dev mode (local file). The Splunk
-                        Passwords API is used when <code>SPLUNK_TOKEN</code> is set on the
-                        backend; otherwise plaintext key persistence is refused unless
+                        Passwords API is used only when <code>AGENT_MESH_SETTINGS_STORE=splunk</code>
+                        {' '}is set on the backend; otherwise plaintext key persistence is refused unless
                         <code> AGENT_MESH_DEV_MODE=1</code>.
                     </>
                 )}
@@ -299,9 +299,10 @@ const SettingsPage: React.FC = () => {
             <SectionTitle>About Credential Storage</SectionTitle>
             <CredentialStorageInfo>
                 <p>
-                    The backend automatically uses Splunk&apos;s encrypted Passwords REST API
-                    (<code>/servicesNS/nobody/splunk-agent-mesh/storage/passwords</code>) when
-                    a <code>SPLUNK_TOKEN</code> environment variable is set on the backend. The
+                    The backend uses Splunk&apos;s encrypted Passwords REST API
+                    (<code>/servicesNS/nobody/splunk-agent-mesh/storage/passwords</code>) only when
+                    <code> AGENT_MESH_SETTINGS_STORE=splunk</code> is set explicitly and a
+                    <code> SPLUNK_TOKEN</code> is available on the backend. The
                     key is stored under realm <code>agent_mesh</code>, name <code>llm_api_key</code>,
                     encrypted at rest by Splunk.
                 </p>

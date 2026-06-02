@@ -12,8 +12,11 @@ from typing import Optional
 
 from .config import (
     ALLOW_SERVICE_SEARCH_FALLBACK,
+    CONF_SOURCE,
     CORS_ORIGINS,
+    ENV_API_KEY_CONFIGURED,
     LOG_LEVEL,
+    SETTINGS_STORE_BACKEND,
     SPLUNK_HOST,
     SPLUNK_TOKEN,
     STREAM_TOKEN_TTL_SECONDS,
@@ -22,7 +25,7 @@ from .conf_reader import get_conf_reader
 from .investigation_models import public_artifact, public_investigation
 from .job_store import JOB_STORE
 from .request_context import RequestContext, context_from_request
-from .settings_store import get_settings_store
+from .settings_store import SplunkSettingsStoreError, get_settings_store
 from .splunk_client import DemoSplunkClient, SplunkClient
 from .stream_tokens import create_stream_token, is_valid_stream_token
 from .security import is_safe_model_name, is_safe_url, redact_key
@@ -30,6 +33,15 @@ from .agents.orchestrator import Orchestrator
 
 logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
+logger.info(
+    "Runtime modes: settings_store=%s conf_source=%s "
+    "service_search_fallback=%s splunk_token_configured=%s env_api_key_configured=%s",
+    SETTINGS_STORE_BACKEND,
+    CONF_SOURCE,
+    ALLOW_SERVICE_SEARCH_FALLBACK,
+    bool(SPLUNK_TOKEN),
+    ENV_API_KEY_CONFIGURED,
+)
 
 app = FastAPI(title="Splunk Agent Mesh", version="0.1.0")
 
@@ -133,11 +145,11 @@ def save_settings(req: SaveSettingsRequest):
             logger.info("API key stored (redacted: %s).", redact_key(req.api_key))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    except RuntimeError as e:
+    except SplunkSettingsStoreError as e:
         # Storage-backend errors (e.g. Splunk REST returned non-2xx). Surface
         # the underlying message so the user can act on it.
         logger.error("Settings save failed via %s: %s", type(store).__name__, e)
-        raise HTTPException(status_code=502, detail=f"Storage backend error: {e}")
+        raise _storage_http_exception(e)
     except Exception as e:
         logger.exception("Settings save failed unexpectedly.")
         raise HTTPException(status_code=500, detail=f"Failed to save settings: {e}")
@@ -147,7 +159,10 @@ def save_settings(req: SaveSettingsRequest):
 @app.post("/api/v1/settings/test")
 def test_connection():
     store = get_settings_store()
-    key = store.get_api_key()
+    try:
+        key = store.get_api_key()
+    except SplunkSettingsStoreError as e:
+        raise _storage_http_exception(e)
     if not key:
         return {"success": False, "error": "No API key configured. Save settings first."}
 
@@ -168,9 +183,9 @@ def clear_credentials():
     store = get_settings_store()
     try:
         store.clear_api_key()
-    except RuntimeError as e:
+    except SplunkSettingsStoreError as e:
         logger.error("Clear credentials failed via %s: %s", type(store).__name__, e)
-        raise HTTPException(status_code=502, detail=f"Storage backend error: {e}")
+        raise _storage_http_exception(e)
     return {"cleared": True}
 
 
@@ -342,6 +357,11 @@ def _sse_event(data: dict) -> str:
 
 
 # ---- Helpers ----
+
+def _storage_http_exception(error: SplunkSettingsStoreError) -> HTTPException:
+    status_code = error.status_code if error.status_code in (401, 403) else 502
+    return HTTPException(status_code=status_code, detail=f"Storage backend error: {error}")
+
 
 def _build_orchestrator(is_demo: bool, context: RequestContext) -> Orchestrator:
     store = get_settings_store()
