@@ -142,6 +142,15 @@ export interface LLMSettings {
     provider: LLMProvider;
     base_url?: string;
     model: string;
+    effective_model?: {
+        model: string | null;
+        agent_id: string | null;
+        agent_name: string | null;
+        conf_source: string;
+        editable: boolean;
+        policy: string;
+        error?: string | null;
+    };
     api_key_configured: boolean;
     storage_backend?: string;
 }
@@ -149,7 +158,7 @@ export interface LLMSettings {
 export interface SaveSettingsRequest {
     provider: LLMProvider;
     base_url?: string;
-    model: string;
+    model?: string;
     api_key?: string;
 }
 

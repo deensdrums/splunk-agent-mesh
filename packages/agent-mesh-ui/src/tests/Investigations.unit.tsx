@@ -71,7 +71,16 @@ jest.mock('../services/apiClient', () => ({
         getAgents: jest.fn().mockResolvedValue({ agents: [] }),
         getSettings: jest.fn().mockResolvedValue({
             provider: 'anthropic',
-            model: 'claude-sonnet-4-6',
+            model: 'legacy-provider-model',
+            effective_model: {
+                model: 'claude-haiku-4-5-20251001',
+                agent_id: 'spl_hunter',
+                agent_name: 'Threat Hunter',
+                conf_source: 'file',
+                editable: false,
+                policy: 'read_only_agents_conf',
+                error: null,
+            },
             base_url: null,
             api_key_configured: false,
             storage_backend: 'DevSettingsStore',
@@ -114,6 +123,18 @@ test('opens settings in an overlay without unmounting the investigation page', a
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Start Investigation/i })).toBeInTheDocument();
+});
+
+test('settings shows the read-only effective harness model from agents.conf', async () => {
+    render(<Investigations />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+
+    expect(await screen.findByText('Effective Harness Model')).toBeInTheDocument();
+    expect(screen.getByText('claude-haiku-4-5-20251001')).toBeInTheDocument();
+    expect(screen.getByText(/Read-only in this UI/i)).toBeInTheDocument();
+    expect(screen.getByText(/Legacy provider default:/i)).toBeInTheDocument();
+    expect(screen.getByText('legacy-provider-model')).toBeInTheDocument();
 });
 
 test('closes overlays with Escape', async () => {

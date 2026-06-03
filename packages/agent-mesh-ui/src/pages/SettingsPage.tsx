@@ -61,6 +61,27 @@ const KeyStatusBadge = styled.span<{ configured: boolean }>`
     border: 1px solid currentColor;
 `;
 
+const ReadOnlyModelPanel = styled.div`
+    padding: ${variables.spacingSmall} ${variables.spacingMedium};
+    border-radius: 3px;
+    background: ${variables.backgroundColorSection};
+    border-left: 3px solid ${variables.accentColorL10};
+`;
+
+const ModelValue = styled.div`
+    color: ${variables.contentColorActive};
+    font-family: ${variables.monoFontFamily};
+    font-size: ${variables.fontSizeLarge};
+    overflow-wrap: anywhere;
+`;
+
+const ModelMeta = styled.div`
+    margin-top: 3px;
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
+    line-height: 1.5;
+`;
+
 const SecurityNote = styled.div`
     margin-top: ${variables.spacingMedium};
     padding: ${variables.spacingSmall} ${variables.spacingMedium};
@@ -107,7 +128,8 @@ const DEFAULT_MODELS: Record<LLMProvider, string> = {
 const SettingsPage: React.FC = () => {
     const [provider, setProvider] = useState<LLMProvider>('anthropic');
     const [baseUrl, setBaseUrl] = useState('');
-    const [model, setModel] = useState(DEFAULT_MODELS.anthropic);
+    const [legacyProviderModel, setLegacyProviderModel] = useState(DEFAULT_MODELS.anthropic);
+    const [effectiveModel, setEffectiveModel] = useState<LLMSettings['effective_model']>();
     const [apiKey, setApiKey] = useState('');
     const [keyConfigured, setKeyConfigured] = useState(false);
     const [storageBackend, setStorageBackend] = useState<string | undefined>();
@@ -122,7 +144,8 @@ const SettingsPage: React.FC = () => {
             .getSettings()
             .then((s: LLMSettings) => {
                 setProvider(s.provider);
-                setModel(s.model || DEFAULT_MODELS[s.provider]);
+                setLegacyProviderModel(s.model || DEFAULT_MODELS[s.provider]);
+                setEffectiveModel(s.effective_model);
                 setBaseUrl(s.base_url || '');
                 setKeyConfigured(s.api_key_configured);
                 setStorageBackend(s.storage_backend);
@@ -138,7 +161,7 @@ const SettingsPage: React.FC = () => {
     const handleProviderChange = (_e: unknown, { value }: { value: string | number | boolean }) => {
         const p = String(value) as LLMProvider;
         setProvider(p);
-        setModel(DEFAULT_MODELS[p]);
+        setLegacyProviderModel(DEFAULT_MODELS[p]);
         if (p !== 'openai_compatible') {setBaseUrl('');}
     };
 
@@ -149,7 +172,6 @@ const SettingsPage: React.FC = () => {
             const res = await apiClient.saveSettings({
                 provider,
                 base_url: baseUrl || undefined,
-                model,
                 api_key: apiKey || undefined,
             });
             setKeyConfigured(res.api_key_configured);
@@ -218,12 +240,31 @@ const SettingsPage: React.FC = () => {
             )}
 
             <FieldGroup>
-                <FieldLabel>Model</FieldLabel>
-                <Text
-                    value={model}
-                    onChange={(_e: unknown, { value }: { value: string }) => setModel(value)}
-                    placeholder="claude-sonnet-4-6"
-                />
+                <FieldLabel>Effective Harness Model</FieldLabel>
+                <ReadOnlyModelPanel>
+                    <ModelValue>
+                        {effectiveModel?.model || 'No active model configured'}
+                    </ModelValue>
+                    <ModelMeta>
+                        Source: <code>agents.conf</code>
+                        {effectiveModel?.conf_source && <> ({effectiveModel.conf_source})</>}
+                        {effectiveModel?.agent_name && (
+                            <>
+                                {' '}· Agent: {effectiveModel.agent_name}
+                                {effectiveModel.agent_id ? ` (${effectiveModel.agent_id})` : ''}
+                            </>
+                        )}
+                    </ModelMeta>
+                    <ModelMeta>
+                        Read-only in this UI. Change the model in the active agent stanza; subsequent
+                        runs use that configured value.
+                    </ModelMeta>
+                    {effectiveModel?.error && <ModelMeta>{effectiveModel.error}</ModelMeta>}
+                </ReadOnlyModelPanel>
+                <FieldHint>
+                    Provider/API-key settings are separate from model selection. Legacy provider default:{' '}
+                    <code>{legacyProviderModel}</code>.
+                </FieldHint>
             </FieldGroup>
 
             <FieldGroup>
