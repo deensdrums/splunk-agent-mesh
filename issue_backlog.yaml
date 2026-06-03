@@ -167,8 +167,8 @@ stories:
   - BD-06
   - BD-07
   recommendation: Design before coding
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Design accepted in docs/DURABLE_INVESTIGATIONS.md and ADR-022. Defines one KV Store document per investigation in agent_mesh_investigations with _key=investigation_id, schema_version, owner, timestamps, 30-day expires_at, status/status_reason, request, summary, agent state, full validated emitted events, artifact metadata, audit entries, last_sequence, and record_revision. Explicitly excludes Splunk session tokens, LLM/API secrets, raw prompts, browser UI state, transient preview rows, and final search result rows; Splunk remains the source of truth for row data. Visibility policy is per-user only. Retention is 30 days via expires_at, with list/load APIs expected to filter expired records before physical cleanup exists. Cancellation, partial-run behavior, checkpoint timing, and optimistic concurrency/retry behavior are documented. Required collections.conf and transforms.conf stanzas are identified but not implemented until STATE-002.'
 
 - order: 9
   story_id: STATE-002
