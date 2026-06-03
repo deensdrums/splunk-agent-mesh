@@ -1,8 +1,9 @@
 # Durable Investigation Records
 
-STATE-001 defines the durable Splunk KV Store record used by later history,
-restore, and URL-addressable session work. This is a design document only:
-STATE-002 will add the repository and runtime checkpointing.
+STATE-001 defined the durable Splunk KV Store record used by later history,
+restore, and URL-addressable session work. STATE-002 implemented the repository
+and runtime checkpointing. STATE-003 will add list/load APIs for the history
+sidebar and should reuse this record shape.
 
 ## Decision
 
@@ -212,7 +213,7 @@ Completed, failed, cancelled, and timed-out investigations remain loadable until
 running records should be marked `timed_out` before normal expiry once timeout
 handling is implemented.
 
-STATE-002 should make list/load APIs filter expired records even before physical
+STATE-003 should make list/load APIs filter expired records even before physical
 deletion exists. Physical cleanup can be implemented opportunistically by the
 backend on startup or before list queries for the POC. A production deployment
 should prefer a scheduled Splunk-owned cleanup job or modular input.
@@ -252,7 +253,7 @@ loadable. A later timeout/recovery pass should mark stale `running` records as
 
 ## Checkpoint Timing
 
-STATE-002 should checkpoint at these boundaries:
+Runtime checkpointing now happens at these boundaries:
 
 - record creation, after the investigation ID is assigned and before streaming
   begins

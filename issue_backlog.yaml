@@ -192,8 +192,8 @@ stories:
   - BD-06
   - BD-07
   recommendation: Implement incrementally
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Implemented Splunk KV Store checkpointing for durable investigation records. Added packages/agent-mesh default collections.conf/transforms.conf for agent_mesh_investigations. Added server/agent_mesh/durable_investigations.py with STATE-001 record projection, row/secret exclusion, 30-day expires_at, Splunk KV repository, restored job projection, and per-user durable read filtering. The global InvestigationJobStore checkpoints on create, meaningful updates, cancel, completion, and failure while keeping memory as the execution cache. Persistence failures are captured on the job as persistence_error and logged without breaking the active stream. Existing get/status endpoints read memory first and fall back to durable KV records when a Splunk session is available, allowing completed records to survive uvicorn restart by ID. Session list/load APIs remain scoped to STATE-003. Covered by server/tests/test_durable_investigations.py; full backend suite passes.'
 
 - order: 10
   story_id: STATE-003
