@@ -96,12 +96,25 @@ const SEARCH_ARTIFACT: Artifact = {
 };
 
 describe('InvestigationReport console', () => {
+    let resizeObservers: Array<{ callback: ResizeObserverCallback; disconnect: jest.Mock }> = [];
+
     beforeEach(() => {
         jest.useFakeTimers();
+        resizeObservers = [];
+        (globalThis as any).ResizeObserver = jest.fn().mockImplementation((callback: ResizeObserverCallback) => {
+            const observer = {
+                callback,
+                observe: jest.fn(),
+                disconnect: jest.fn(),
+            };
+            resizeObservers.push(observer);
+            return observer;
+        });
     });
 
     afterEach(() => {
         jest.useRealTimers();
+        delete (globalThis as any).ResizeObserver;
     });
 
     test('renders focused first-use empty-state guidance before a run starts', () => {
@@ -178,6 +191,7 @@ describe('InvestigationReport console', () => {
         expect(scrollArea.scrollTop).toBe(1000);
 
         scrollArea.scrollTop = 100;
+        fireEvent.wheel(scrollArea);
         fireEvent.scroll(scrollArea);
         rerender(
             <InvestigationReport
@@ -192,6 +206,32 @@ describe('InvestigationReport console', () => {
 
         expect(scrollArea.scrollTop).toBe(100);
         expect(within(scrollArea).getByText('Suspicious activity found.')).toBeInTheDocument();
+    });
+
+    test('keeps following bottom when rendered search content expands without user scroll intent', () => {
+        const result = resultWithEvents([SEARCH_EVENT]);
+        result.artifacts = [{ ...SEARCH_ARTIFACT, status: 'running', _revision: 2 }];
+
+        render(<InvestigationReport descriptors={[]} result={result} running />);
+        const scrollArea = screen.getByTestId('transcript-scroll');
+        Object.defineProperties(scrollArea, {
+            clientHeight: { configurable: true, value: 100 },
+            scrollHeight: { configurable: true, value: 1000 },
+            scrollTop: { configurable: true, value: 0, writable: true },
+        });
+
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+        expect(scrollArea.scrollTop).toBe(1000);
+
+        Object.defineProperty(scrollArea, 'scrollHeight', { configurable: true, value: 1400 });
+        scrollArea.scrollTop = 1000;
+        act(() => {
+            resizeObservers[0].callback([], resizeObservers[0] as unknown as ResizeObserver);
+        });
+
+        expect(scrollArea.scrollTop).toBe(1400);
     });
 
     test('renders search results inside one blue event card without duplicating SPL or title', () => {
