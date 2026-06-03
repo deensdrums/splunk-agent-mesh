@@ -22,6 +22,7 @@ from .config import (
     STREAM_TOKEN_TTL_SECONDS,
 )
 from .conf_reader import get_conf_reader
+from .durable_investigations import DurableInvestigationError, job_from_record, repository_from_context
 from .investigation_models import public_artifact, public_investigation
 from .job_store import JOB_STORE
 from .request_context import RequestContext, context_from_request
@@ -259,7 +260,10 @@ def get_investigation_status(investigation_id: str, http_request: Request):
     context = context_from_request(http_request)
     status = JOB_STORE.status(investigation_id, username=context.username)
     if status is None:
-        raise HTTPException(status_code=404, detail="Investigation not found.")
+        durable = _durable_job(investigation_id, context)
+        if durable is None:
+            raise HTTPException(status_code=404, detail="Investigation not found.")
+        return _status_from_job(durable)
     return status
 
 
@@ -298,7 +302,9 @@ def get_investigation(investigation_id: str, http_request: Request):
     context = context_from_request(http_request)
     job = JOB_STORE.get(investigation_id, username=context.username)
     if job is None:
-        raise HTTPException(status_code=404, detail="Investigation not found.")
+        job = _durable_job(investigation_id, context)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Investigation not found.")
     return public_investigation(job)
 
 
@@ -371,6 +377,41 @@ def _sse_event(data: dict) -> str:
 def _storage_http_exception(error: SplunkSettingsStoreError) -> HTTPException:
     status_code = error.status_code if error.status_code in (401, 403) else 502
     return HTTPException(status_code=status_code, detail=f"Storage backend error: {error}")
+
+
+def _durable_job(investigation_id: str, context: RequestContext) -> dict | None:
+    try:
+        record = repository_from_context(context).get(investigation_id, username=context.username)
+    except DurableInvestigationError as exc:
+        logger.error("Durable investigation read failed for %s: %s", investigation_id, exc)
+        raise HTTPException(status_code=502, detail=f"Durable investigation store error: {exc}")
+    if not record:
+        return None
+    return job_from_record(record)
+
+
+def _status_from_job(job: dict) -> dict:
+    return {
+        "id": job["id"],
+        "owner": job["owner"],
+        "status": job["status"],
+        "started_at": job.get("started_at"),
+        "completed_at": job.get("completed_at"),
+        "agent_order": job.get("agent_order", []),
+        "agents": {
+            agent_id: {
+                "agent_id": output.get("agent_id"),
+                "display_name": output.get("display_name"),
+                "status": output.get("status"),
+                "started_at": output.get("started_at"),
+                "completed_at": output.get("completed_at"),
+                "error": output.get("error"),
+            }
+            for agent_id, output in job.get("agents", {}).items()
+        },
+        "artifact_count": len(job.get("artifacts", [])),
+        "error": job.get("error"),
+    }
 
 
 def _effective_harness_model() -> dict:
