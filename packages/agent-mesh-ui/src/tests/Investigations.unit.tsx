@@ -51,14 +51,19 @@ jest.mock('@splunk/visualizations/Column', () => () => <div>Column</div>);
 jest.mock('@splunk/visualizations/Line', () => () => <div>Line</div>);
 jest.mock('@splunk/visualizations/Pie', () => () => <div>Pie</div>);
 
-test('renders Splunk Agent Mesh header', () => {
+test('removes redundant page heading', () => {
     render(<Investigations />);
-    expect(screen.getByText(/Splunk Agent Mesh/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^Splunk Agent Mesh$/i)).not.toBeInTheDocument();
 });
 
-test('renders tagline', () => {
+test('removes redundant tagline', () => {
     render(<Investigations />);
-    expect(screen.getByText(/From alert to evidence-backed response/i)).toBeInTheDocument();
+    expect(screen.queryByText(/From alert to evidence-backed response/i)).not.toBeInTheDocument();
+});
+
+test('renders a full-height shell for the investigation workspace', () => {
+    render(<Investigations />);
+    expect(screen.getByTestId('investigations-shell')).toBeInTheDocument();
 });
 
 test('has a Start Investigation button', () => {

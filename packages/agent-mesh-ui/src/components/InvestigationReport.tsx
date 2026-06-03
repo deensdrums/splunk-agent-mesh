@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { variables } from '@splunk/themes';
 import Button from '@splunk/react-ui/Button';
@@ -45,12 +45,6 @@ const DemoBadge = styled.span`
 const STAGGER_INTERVAL_MS = 330;
 // Treat the view as "stuck to bottom" if within this many px of the end.
 const STICK_THRESHOLD_PX = 40;
-// Leave a small gutter below the workbench so it does not sit flush against the
-// viewport edge. On short screens, keep enough height for a usable transcript
-// and allow the document to scroll naturally.
-const VIEWPORT_GUTTER_PX = 16;
-const MIN_WORKBENCH_HEIGHT_PX = 360;
-
 const fadeSlideIn = keyframes`
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -101,11 +95,13 @@ const HUNTER_TONE: Record<AgentRunStatus, Tone> = {
 
 // ---- Layout primitives ----
 
-const Container = styled.div<{ $height: number }>`
+const Container = styled.div`
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
-    height: ${({ $height }) => `${$height}px`};
-    min-height: ${MIN_WORKBENCH_HEIGHT_PX}px;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
 `;
 
 const Toolbar = styled.div`
@@ -252,6 +248,7 @@ const MonoId = styled.span`
 
 const Placeholder = styled.div`
     display: flex;
+    flex: 1 1 auto;
     align-items: center;
     gap: ${variables.spacingSmall};
     border: 1px solid ${variables.borderColor};
@@ -448,23 +445,6 @@ const AgentTranscript: React.FC<{
 };
 
 const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, isDemo, onClear }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [workbenchHeight, setWorkbenchHeight] = useState(MIN_WORKBENCH_HEIGHT_PX);
-
-    useEffect(() => {
-        const updateWorkbenchHeight = () => {
-            const top = containerRef.current?.getBoundingClientRect().top;
-            if (top === undefined) {
-                return;
-            }
-            setWorkbenchHeight(Math.max(MIN_WORKBENCH_HEIGHT_PX, window.innerHeight - top - VIEWPORT_GUTTER_PX));
-        };
-
-        updateWorkbenchHeight();
-        window.addEventListener('resize', updateWorkbenchHeight);
-        return () => window.removeEventListener('resize', updateWorkbenchHeight);
-    });
-
     if (!result && !running) {
         return (
             <Placeholder>
@@ -499,7 +479,7 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, is
     }
 
     return (
-        <Container ref={containerRef} $height={workbenchHeight}>
+        <Container>
             <Toolbar>
                 <ToolbarGroup>
                     <ToolbarTitle>Investigation Console</ToolbarTitle>

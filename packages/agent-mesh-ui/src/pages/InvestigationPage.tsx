@@ -10,12 +10,23 @@ import InvestigationReport from '../components/InvestigationReport';
 import { apiClient, createInvestigationStream } from '../services/apiClient';
 import { canPollSplunkWebResults, pollSplunkSearchResults } from '../services/splunkSearchResults';
 
+const PageShell = styled.div`
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+    padding: ${variables.spacingMedium};
+`;
+
 const FormCard = styled.div`
     background: ${variables.backgroundColorNavigation};
     border: 1px solid ${variables.borderColor};
     border-radius: 4px;
     padding: ${variables.spacingLarge};
-    margin-bottom: ${variables.spacingMedium};
+    margin-bottom: ${variables.spacingSmall};
+    flex: 0 0 auto;
 `;
 
 const FormCardCollapsed = styled(FormCard)`
@@ -73,7 +84,15 @@ const ButtonRow = styled.div`
 `;
 
 const SectionGap = styled.div`
-    margin-bottom: ${variables.spacingMedium};
+    flex: 0 0 auto;
+    margin-bottom: ${variables.spacingSmall};
+`;
+
+const ReportRegion = styled.div`
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
 `;
 
 const DEMO_FORM: InvestigationRequest = {
@@ -340,7 +359,7 @@ const InvestigationPage: React.FC = () => {
     ].filter(Boolean).join(' · ');
 
     return (
-        <div>
+        <PageShell>
             {inputsExpanded ? (
                 <FormCard>
                     <FieldGroup>
@@ -437,14 +456,16 @@ const InvestigationPage: React.FC = () => {
                 </SectionGap>
             )}
 
-            <InvestigationReport
-                descriptors={descriptors}
-                result={result}
-                running={running}
-                isDemo={isDemo}
-                onClear={clearInvestigation}
-            />
-        </div>
+            <ReportRegion>
+                <InvestigationReport
+                    descriptors={descriptors}
+                    result={result}
+                    running={running}
+                    isDemo={isDemo}
+                    onClear={clearInvestigation}
+                />
+            </ReportRegion>
+        </PageShell>
     );
 };
 
