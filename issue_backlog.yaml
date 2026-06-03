@@ -167,8 +167,8 @@ stories:
   - BD-06
   - BD-07
   recommendation: Design before coding
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Design accepted in docs/DURABLE_INVESTIGATIONS.md and ADR-022. Defines one KV Store document per investigation in agent_mesh_investigations with _key=investigation_id, schema_version, owner, timestamps, 30-day expires_at, status/status_reason, request, summary, agent state, full validated emitted events, artifact metadata, audit entries, last_sequence, and record_revision. Explicitly excludes Splunk session tokens, LLM/API secrets, raw prompts, browser UI state, transient preview rows, and final search result rows; Splunk remains the source of truth for row data. Visibility policy is per-user only. Retention is 30 days via expires_at, with list/load APIs expected to filter expired records before physical cleanup exists. Cancellation, partial-run behavior, checkpoint timing, and optimistic concurrency/retry behavior are documented. Required collections.conf and transforms.conf stanzas are identified but not implemented until STATE-002.'
 
 - order: 9
   story_id: STATE-002
@@ -192,8 +192,8 @@ stories:
   - BD-06
   - BD-07
   recommendation: Implement incrementally
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Implemented Splunk KV Store checkpointing for durable investigation records. Added packages/agent-mesh default collections.conf/transforms.conf for agent_mesh_investigations. Added server/agent_mesh/durable_investigations.py with STATE-001 record projection, row/secret exclusion, 30-day expires_at, Splunk KV repository, restored job projection, and per-user durable read filtering. The global InvestigationJobStore checkpoints on create, meaningful updates, cancel, completion, and failure while keeping memory as the execution cache. Persistence failures are captured on the job as persistence_error and logged without breaking the active stream. Existing get/status endpoints read memory first and fall back to durable KV records when a Splunk session is available, allowing completed records to survive uvicorn restart by ID. Session list/load APIs remain scoped to STATE-003. Covered by server/tests/test_durable_investigations.py; full backend suite passes.'
 
 - order: 10
   story_id: STATE-003

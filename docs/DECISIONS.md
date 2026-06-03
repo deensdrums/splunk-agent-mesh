@@ -347,3 +347,34 @@ for future model edits.
 misled into editing the wrong setting. Deliberate model editing remains a future
 feature: it should write an app-local `agents.conf` override with explicit RBAC,
 reload behavior, error handling, and auditability.
+
+---
+
+## ADR-022: Durable Investigation Records in KV Store
+
+**Date**: 2026-06-03 · **Status**: Accepted
+
+**Context**: The in-memory job store is enough for live SSE streaming, but it
+cannot support chat-style history, URL restoration, or recovery after a uvicorn
+restart. The durable model needs to be designed before persistence code lands so
+history, ownership, retention, and artifact behavior are consistent.
+
+**Chosen**: store one document per investigation in a Splunk KV Store collection
+named `agent_mesh_investigations`, keyed by investigation ID. The durable record
+contains owner, timestamps, 30-day retention metadata, lifecycle status, request
+fields, full validated emitted events, artifact metadata, and revision fields.
+Per-user visibility is the POC policy.
+
+Search result rows are not stored. Splunk remains the source of truth for rows;
+the durable record stores SID, SPL, fields, status, counts, visualization
+metadata, and enough artifact state for the browser to re-fetch or re-render.
+Secrets, Splunk session tokens, LLM keys, raw prompts, and transient preview rows
+are excluded.
+
+The detailed schema, retention policy, checkpoint timing, cancellation handling,
+partial-run behavior, concurrency model, and required collection configuration
+are documented in `docs/DURABLE_INVESTIGATIONS.md`.
+
+**Consequences**: STATE-002 can implement persistence against a stable contract.
+The design preserves enough user-visible investigation context for history and
+restore while avoiding durable duplication of Splunk search result data.
