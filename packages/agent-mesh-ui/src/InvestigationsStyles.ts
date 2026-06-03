@@ -3,6 +3,7 @@ import { variables } from '@splunk/themes';
 
 export const StyledAppContainer = styled.div<{ $height?: number }>`
     display: flex;
+    position: relative;
     flex-direction: column;
     height: ${({ $height }) => ($height ? `${$height}px` : '100vh')};
     min-height: 0;
@@ -10,29 +11,23 @@ export const StyledAppContainer = styled.div<{ $height?: number }>`
     background: ${variables.backgroundColorPage};
 `;
 
-export const StyledNavigationShell = styled.div`
+export const StyledConsoleMain = styled.div`
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
+    width: 100%;
     overflow: hidden;
+`;
 
-    > * {
-        display: flex;
-        flex: 1 1 auto;
-        flex-direction: column;
-        min-height: 0;
-        width: 100%;
-        overflow: hidden;
-    }
-
-    [role='tabpanel'] {
-        display: flex;
-        flex: 1 1 auto;
-        min-height: 0;
-        width: 100%;
-        overflow: auto;
-    }
+export const StyledConsoleControls = styled.div`
+    position: absolute;
+    top: ${variables.spacingSmall};
+    right: ${variables.spacingMedium};
+    z-index: 10;
+    display: flex;
+    gap: ${variables.spacingSmall};
+    align-items: center;
 `;
 
 export const StyledPanelFill = styled.div`
@@ -41,6 +36,11 @@ export const StyledPanelFill = styled.div`
     min-height: 0;
     width: 100%;
     overflow: hidden;
+`;
+
+export const StyledModalContent = styled.div`
+    min-width: 560px;
+    max-width: calc(100vw - 64px);
 `;
 
 // Legacy exports retained for any existing references
