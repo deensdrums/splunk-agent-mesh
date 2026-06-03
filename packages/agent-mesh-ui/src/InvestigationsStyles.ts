@@ -7,6 +7,8 @@ export const StyledAppContainer = styled.div<{ $height?: number }>`
     flex-direction: column;
     height: ${({ $height }) => ($height ? `${$height}px` : '100vh')};
     min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
     overflow: hidden;
     background: ${variables.backgroundColorPage};
 `;
@@ -21,13 +23,14 @@ export const StyledConsoleMain = styled.div`
 `;
 
 export const StyledConsoleControls = styled.div`
-    position: absolute;
-    top: ${variables.spacingSmall};
-    right: ${variables.spacingMedium};
-    z-index: 10;
     display: flex;
+    flex: 0 0 auto;
+    justify-content: flex-end;
     gap: ${variables.spacingSmall};
     align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    padding: ${variables.spacingSmall} ${variables.spacingMedium} 0;
 `;
 
 export const StyledPanelFill = styled.div`
