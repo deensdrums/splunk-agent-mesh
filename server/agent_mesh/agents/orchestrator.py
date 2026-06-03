@@ -68,8 +68,13 @@ class Orchestrator:
         run_id = investigation_id or request.get("investigation_id", "inv-001")
 
         if request.get("demo"):
-            logger.info("Demo mode: returning canned threat-hunter events.")
-            return build_demo_result(agents, investigation_id=run_id, owner=self.context.username)
+            logger.info("Demo mode: replaying canned threat-hunter investigation.")
+            return build_demo_result(
+                agents,
+                investigation_id=run_id,
+                owner=self.context.username,
+                progress_callback=progress_callback,
+            )
 
         started = now_iso()
         outputs: dict[str, dict] = {}

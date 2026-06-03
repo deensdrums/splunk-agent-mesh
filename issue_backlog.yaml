@@ -82,8 +82,8 @@ stories:
   origin_thought_ids:
   - BD-02
   recommendation: Do early
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Backend demo_case.py is now the single authoritative fixture (frontend demoData.ts/DEMO_RESULT removed). Scenario replaced (no jsmith) with a Log4Shell -> C2 investigation. When run via /start+SSE it is a paced replay: events stream and each search artifact goes pending->running->done with contextual phases, so it looks like a live LLM run; /run returns the same result instantly. Pacing via AGENT_MESH_DEMO_STEP_SECONDS (default 1.1, tests 0). UI shows a "Demo data" badge; button renamed to "Run Demo Investigation"; demo now uses the same /start path as live. Authoritative fixture + knob documented in docs/DEMO_RUNTIME.md. Smoke tests in server/tests/test_demo.py (no-LLM completion, progressive replay, start->completion->artifact via job store). Verified: pytest 34, jest 20, tsc + lint clean.'
 
 - order: 5
   story_id: UI-001

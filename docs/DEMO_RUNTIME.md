@@ -114,6 +114,31 @@ print the demo URL, skipping all Splunk steps.
 
 ---
 
+## Demo fixture (DEMO-003)
+
+The deterministic demo is a **replayable Log4Shell investigation** — no LLM or
+Splunk call.
+
+- **Authoritative source:** `server/agent_mesh/demo/demo_case.py`. This is the
+  single source of truth; the former frontend duplicate (`demoData.ts`) was
+  removed. The token-less judge is covered by this backend fixture + the
+  bootstrap (which always starts uvicorn).
+- **Paced replay:** when an investigation runs via `/start` + SSE (what the UI
+  does), the events and search artifacts are streamed with pacing — narration,
+  a search card going pending → running → done, findings, a handoff, and a
+  final answer — so it looks like a live agentic run. The synchronous `/run`
+  path returns the same final result instantly.
+- **Pacing knob:** `AGENT_MESH_DEMO_STEP_SECONDS` (default `1.1`; tests set `0`).
+- **Scenario:** Log4Shell (CVE-2021-44228) exploitation of `web-prod-04` /
+  `web-prod-07` with a confirmed outbound LDAP C2 callback. Includes a timechart
+  artifact with guaranteed rows.
+- **UI labeling:** the console shows a **"Demo data"** badge for demo runs.
+- **Smoke tests:** `server/tests/test_demo.py` (no-LLM completion, progressive
+  replay with pending→running→done, and a start→completion→artifact run through
+  the job store — the same state the SSE endpoint serves).
+
+---
+
 ## Risks / prerequisites to validate
 
 - **⚠️ Splunk Python version.** `restmap.conf` declares `python.required =
@@ -143,9 +168,8 @@ print the demo URL, skipping all Splunk steps.
   Tier 2 adds an existing Splunk and one bootstrap command.
 
 ## Follow-ups this unblocks
-- **DEMO-002:** implement the bootstrap + preflight to the spec above.
-- **DEMO-003:** harden deterministic demo mode (Tier 1 must not depend on a live
-  LLM/Splunk; guarantee artifact rows).
+- **DEMO-002:** ✅ done — `scripts/bootstrap.sh` (demo/full/check/stop).
+- **DEMO-003:** ✅ done — paced Log4Shell replay; see "Demo fixture" above.
 - **AUTH-001:** make credential mode explicit; remove the `SPLUNK_TOKEN`
   coupling this record routes around.
 - **DOC-001:** fold the Tier-1 command into the README quick start as the

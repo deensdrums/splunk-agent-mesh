@@ -22,8 +22,23 @@ interface Props {
     descriptors: AgentDescriptor[];
     result: InvestigationResult | null;
     running: boolean;
+    isDemo?: boolean;
     onClear: () => void;
 }
+
+// Badge shown in the toolbar when the run is the deterministic demo replay.
+const DemoBadge = styled.span`
+    display: inline-block;
+    margin-left: ${variables.spacingSmall};
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: ${variables.fontSizeSmall};
+    font-weight: ${variables.fontWeightSemiBold};
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: ${variables.statusColorInfo};
+    color: ${variables.contentColorActive};
+`;
 
 // Cards reveal one at a time (even when several events arrive in one response)
 // and fade/slide in as they paint.
@@ -432,7 +447,7 @@ const AgentTranscript: React.FC<{
     );
 };
 
-const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, onClear }) => {
+const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, isDemo, onClear }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [workbenchHeight, setWorkbenchHeight] = useState(MIN_WORKBENCH_HEIGHT_PX);
 
@@ -488,6 +503,11 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, on
             <Toolbar>
                 <ToolbarGroup>
                     <ToolbarTitle>Investigation Console</ToolbarTitle>
+                    {isDemo && (
+                        <DemoBadge title="Replayed demo investigation — no live LLM or Splunk calls.">
+                            Demo data
+                        </DemoBadge>
+                    )}
                     <ToolbarMeta>
                         {result.status}
                         {result.owner ? ` · ${result.owner}` : ''}
