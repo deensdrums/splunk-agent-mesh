@@ -320,3 +320,30 @@ at the sidecar API boundary.
 agent configuration, and delegated analyst search sessions. Startup logs show
 the selected modes and whether credentials are configured without printing
 secret values.
+
+---
+
+## ADR-021: Harness Model Source of Truth is `agents.conf`
+
+**Date**: 2026-06-02 · **Status**: Accepted (refines ADR-006 and ADR-020)
+
+**Context**: The Settings surface exposed a model field beside provider and API
+key settings, but live investigations pass the model from each active
+`agents.conf` stanza to `LLMProvider.complete()`. That made Settings look like a
+model selector even though the harness ignored it for real runs.
+
+**Chosen**: `agents.conf` is the model source of truth. The Settings API now
+reports the effective primary-agent model read from the configured conf source
+(`AGENT_MESH_CONF_SOURCE=file|splunk`), and the Settings UI displays that value
+as read-only. Provider, base URL, and API-key settings remain editable because
+they select the credential and transport used by the provider adapter; model
+selection is separate.
+
+The old provider-setting `model` value is preserved only as a backward-compatible
+provider default. It is not presented as the harness model and is not the policy
+for future model edits.
+
+**Consequences**: analysts can see the model a run will request without being
+misled into editing the wrong setting. Deliberate model editing remains a future
+feature: it should write an app-local `agents.conf` override with explicit RBAC,
+reload behavior, error handling, and auditability.

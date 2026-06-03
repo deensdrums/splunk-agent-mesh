@@ -79,7 +79,7 @@ Clean-checkout realism: needs only Node ≥ 22, Yarn, Python ≥ 3.11, and the r
 | uvicorn | Started from `server/` venv with **`AGENT_MESH_API_KEY` only** (env-backed LLM key). **Do not set `SPLUNK_TOKEN`** — see Credential policy. Health-checked at `/api/v1/health`. |
 | Search auth | The browser's Splunk session is delegated to uvicorn through the Splunk-Web `__raw` proxy → `agent_mesh_bridge`; searches run as the analyst. No shared admin token on the hot path. |
 | Sample data | Load the bundled lookups into indexes (the `| inputlookup … | collect …` block in the README) so live searches return rows. |
-| Config (agents/model) | `agents.conf` is read from the repo file (FileConfReader) since no `SPLUNK_TOKEN` is set; the active model is the conf `model` value, not the Settings tab (see CFG-001). |
+| Config (agents/model) | `agents.conf` is read from the repo file (FileConfReader) since no `SPLUNK_TOKEN` is set; the active model is the conf `model` value shown read-only in Settings (ADR-021). |
 
 ### Credential policy for the demo
 
@@ -151,9 +151,9 @@ Splunk call.
   the script must make this explicit.
 - **CORS:** the backend must allowlist the Splunk Web origin (config default
   already includes `http://localhost:8000`).
-- **Model surface:** the Settings tab shows a cosmetic provider-default model,
-  not the harness model (CFG-001). Judges should not infer the running model
-  from that tab; the conf `model` is authoritative.
+- **Model surface:** Settings shows the effective harness model read from
+  `agents.conf` as read-only (ADR-021). Judges should edit the conf stanza, not
+  provider settings, to change the model used by subsequent runs.
 
 ---
 

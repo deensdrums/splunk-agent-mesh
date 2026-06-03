@@ -145,8 +145,8 @@ stories:
   origin_thought_ids:
   - BD-03
   recommendation: Do after auth policy
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Implemented read-only effective harness model visibility. /api/v1/settings now returns effective_model sourced from the same agents.conf reader used by the orchestrator, including primary agent id/name, conf source, read-only policy, and error state. Settings no longer presents the model as an editable provider setting; provider/base URL/API key remain separate. Connection tests use the effective harness model. Model edits are intentionally deferred until an app-local agents.conf override flow with RBAC/reload/audit behavior is designed. Policy documented in ADR-021 and DEMO_RUNTIME.md.'
 
 - order: 8
   story_id: STATE-001
