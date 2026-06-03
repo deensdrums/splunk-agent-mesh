@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { variables } from '@splunk/themes';
 import Message from '@splunk/react-ui/Message';
@@ -144,6 +144,11 @@ const ScrollArea = styled.div`
     /* Extra bottom padding keeps the newest auto-scrolled card clear of the
        status footer so it stays comfortably readable. */
     padding: ${variables.spacingMedium} ${variables.spacingMedium} ${variables.spacingLarge};
+`;
+
+const ScrollContent = styled.div`
+    width: 100%;
+    box-sizing: border-box;
 `;
 
 const RevealItem = styled.div`
@@ -335,7 +340,9 @@ const AgentTranscript: React.FC<{
     inputSummary?: React.ReactNode;
 }> = ({ agentName, output, artifacts, investigationId, investigationStatus, running, resetKey, inputSummary }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
-    const stickToBottom = useRef(true);
+    const contentRef = useRef<HTMLDivElement>(null);
+    const followBottom = useRef(true);
+    const userScrollIntent = useRef(false);
 
     const events = output?.events;
     const hasEvents = !!events && events.length > 0;
@@ -350,23 +357,57 @@ const AgentTranscript: React.FC<{
         hunterStatus === 'running' ||
         hunterStatus === 'iterating';
 
+    const scrollToBottom = () => {
+        const el = scrollRef.current;
+        if (!el) {
+            return;
+        }
+        el.scrollTop = el.scrollHeight;
+    };
+
     const handleScroll = () => {
         const el = scrollRef.current;
         if (!el) {
             return;
         }
         const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-        stickToBottom.current = distanceFromBottom < STICK_THRESHOLD_PX;
+        if (userScrollIntent.current) {
+            followBottom.current = distanceFromBottom < STICK_THRESHOLD_PX;
+            userScrollIntent.current = false;
+        } else if (followBottom.current && distanceFromBottom >= STICK_THRESHOLD_PX) {
+            scrollToBottom();
+        }
+    };
+
+    const markUserScrollIntent = () => {
+        userScrollIntent.current = true;
     };
 
     // Keep the newest revealed card in view — but only if the user hasn't
     // scrolled up to read an earlier card.
-    useEffect(() => {
-        const el = scrollRef.current;
-        if (el && stickToBottom.current) {
-            el.scrollTop = el.scrollHeight;
+    useLayoutEffect(() => {
+        if (followBottom.current) {
+            scrollToBottom();
         }
     }, [revealed, output?.markdown, artifacts.length]);
+
+    useEffect(() => {
+        const content = contentRef.current;
+        if (!content || typeof ResizeObserver === 'undefined') {
+            return undefined;
+        }
+        const observer = new ResizeObserver(() => {
+            // Search artifacts often expand after their event card already
+            // exists (preview/final rows, charts, tables). That growth is not
+            // user intent, so keep following bottom unless an explicit scroll
+            // interaction turned follow mode off.
+            if (followBottom.current) {
+                scrollToBottom();
+            }
+        });
+        observer.observe(content);
+        return () => observer.disconnect();
+    }, [resetKey]);
 
     let body: React.ReactNode;
     if (output?.status === 'error') {
@@ -430,8 +471,17 @@ const AgentTranscript: React.FC<{
                 {inputSummary && <AgentHeadSummary>{inputSummary}</AgentHeadSummary>}
             </AgentHead>
             <TranscriptShell data-testid="transcript-shell">
-                <ScrollArea data-testid="transcript-scroll" ref={scrollRef} onScroll={handleScroll}>
-                    {body}
+                <ScrollArea
+                    data-testid="transcript-scroll"
+                    ref={scrollRef}
+                    onScroll={handleScroll}
+                    onWheel={markUserScrollIntent}
+                    onTouchMove={markUserScrollIntent}
+                    onKeyDown={markUserScrollIntent}
+                >
+                    <ScrollContent ref={contentRef} data-testid="transcript-content">
+                        {body}
+                    </ScrollContent>
                 </ScrollArea>
                 <StatusBar data-testid="transcript-status">
                     {isActive && <WaitSpinner size="small" />}
