@@ -90,7 +90,7 @@ class InvestigationRequest(BaseModel):
 class SaveSettingsRequest(BaseModel):
     provider: str
     base_url: Optional[str] = None
-    model: str
+    model: Optional[str] = None
     api_key: Optional[str] = None
 
     @field_validator("provider")
@@ -102,8 +102,8 @@ class SaveSettingsRequest(BaseModel):
 
     @field_validator("model")
     @classmethod
-    def validate_model(cls, v: str) -> str:
-        if not is_safe_model_name(v):
+    def validate_model(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not is_safe_model_name(v):
             raise ValueError("Invalid model name")
         return v
 
@@ -126,10 +126,12 @@ def health():
 def get_settings():
     store = get_settings_store()
     cfg = store.get_provider_settings()
+    effective_model = _effective_harness_model()
     return {
         "provider": cfg.get("provider", "anthropic"),
         "base_url": cfg.get("base_url"),
         "model": cfg.get("model", "claude-sonnet-4-6"),
+        "effective_model": effective_model,
         "api_key_configured": store.api_key_configured(),
         "storage_backend": type(store).__name__,
     }
@@ -139,7 +141,15 @@ def get_settings():
 def save_settings(req: SaveSettingsRequest):
     store = get_settings_store()
     try:
-        store.save_provider_settings(req.provider, req.base_url, req.model)
+        current = store.get_provider_settings()
+        # The running harness model is controlled by agents.conf. Preserve this
+        # legacy provider-setting value for backward compatibility, but do not
+        # treat it as the model source of truth.
+        store.save_provider_settings(
+            req.provider,
+            req.base_url,
+            req.model or current.get("model", "claude-sonnet-4-6"),
+        )
         if req.api_key:
             store.store_api_key(req.api_key)
             logger.info("API key stored (redacted: %s).", redact_key(req.api_key))
@@ -168,7 +178,7 @@ def test_connection():
 
     cfg = store.get_provider_settings()
     provider_name = cfg.get("provider", "anthropic")
-    model = cfg.get("model", "")
+    model = _effective_harness_model().get("model") or cfg.get("model", "")
     base_url = cfg.get("base_url", "")
 
     try:
@@ -361,6 +371,40 @@ def _sse_event(data: dict) -> str:
 def _storage_http_exception(error: SplunkSettingsStoreError) -> HTTPException:
     status_code = error.status_code if error.status_code in (401, 403) else 502
     return HTTPException(status_code=status_code, detail=f"Storage backend error: {error}")
+
+
+def _effective_harness_model() -> dict:
+    """Return the primary agent model used by the harness.
+
+    Provider settings can select Anthropic/OpenRouter/OpenAI-compatible and the
+    API key, but each LLM call passes the model configured on the active
+    agents.conf stanza. Settings exposes this as read-only until a deliberate
+    conf-write/RBAC story exists.
+    """
+    try:
+        agents = get_conf_reader().get_agents()
+    except Exception as exc:
+        logger.exception("Failed to read effective harness model.")
+        return {
+            "model": None,
+            "agent_id": None,
+            "agent_name": None,
+            "conf_source": CONF_SOURCE,
+            "editable": False,
+            "policy": "read_only_agents_conf",
+            "error": str(exc),
+        }
+
+    primary = next((agent for agent in agents if agent.agent_role == "primary"), agents[0] if agents else None)
+    return {
+        "model": primary.model if primary else None,
+        "agent_id": primary.id if primary else None,
+        "agent_name": primary.display_name if primary else None,
+        "conf_source": CONF_SOURCE,
+        "editable": False,
+        "policy": "read_only_agents_conf",
+        "error": None if primary else "No enabled agents configured.",
+    }
 
 
 def _build_orchestrator(is_demo: bool, context: RequestContext) -> Orchestrator:
