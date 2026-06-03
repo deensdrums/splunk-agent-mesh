@@ -127,6 +127,19 @@ describe('InvestigationReport console', () => {
         expect(screen.getByTestId('transcript-status')).toHaveTextContent('Investigationrunning');
     });
 
+    test('renders optional input summary in the Threat Hunter header', () => {
+        render(
+            <InvestigationReport
+                descriptors={[]}
+                result={resultWithEvents([EVENT_ONE])}
+                running={false}
+                inputSummary={<span>Edit Inputs</span>}
+            />
+        );
+
+        expect(screen.getByText('Edit Inputs')).toBeInTheDocument();
+    });
+
     test('shows progressive event count', () => {
         render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running />);
 

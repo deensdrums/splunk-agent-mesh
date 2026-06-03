@@ -24,8 +24,11 @@ jest.mock('@splunk/react-ui/Text', () => ({ value, onChange, placeholder }: any)
 jest.mock('@splunk/react-ui/Message', () => ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
 ));
-jest.mock('../components/InvestigationReport', () => ({ result }: any) => (
-    <div>{result && <span>Report ready</span>}</div>
+jest.mock('../components/InvestigationReport', () => ({ result, inputSummary }: any) => (
+    <div>
+        {result && <span>Report ready</span>}
+        {inputSummary}
+    </div>
 ));
 jest.mock('../services/apiClient', () => ({
     apiClient: {

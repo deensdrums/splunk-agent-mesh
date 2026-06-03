@@ -21,6 +21,7 @@ interface Props {
     descriptors: AgentDescriptor[];
     result: InvestigationResult | null;
     running: boolean;
+    inputSummary?: React.ReactNode;
 }
 
 // Cards reveal one at a time (even when several events arrive in one response)
@@ -100,6 +101,7 @@ const AgentHead = styled.div`
     display: flex;
     align-items: center;
     gap: ${variables.spacingSmall};
+    flex-wrap: wrap;
     margin-bottom: ${variables.spacingSmall};
 `;
 
@@ -107,6 +109,14 @@ const AgentName = styled.span`
     font-weight: ${variables.fontWeightSemiBold};
     font-size: ${variables.fontSizeLarge};
     color: ${variables.contentColorActive};
+`;
+
+const AgentHeadSummary = styled.div`
+    display: flex;
+    align-items: center;
+    flex: 1 1 420px;
+    justify-content: flex-end;
+    min-width: 0;
 `;
 
 // A console surface rather than an outer card: restrained separators define the
@@ -322,7 +332,8 @@ const AgentTranscript: React.FC<{
     investigationStatus: InvestigationResult['status'];
     running: boolean;
     resetKey: unknown;
-}> = ({ agentName, output, artifacts, investigationId, investigationStatus, running, resetKey }) => {
+    inputSummary?: React.ReactNode;
+}> = ({ agentName, output, artifacts, investigationId, investigationStatus, running, resetKey, inputSummary }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const stickToBottom = useRef(true);
 
@@ -416,6 +427,7 @@ const AgentTranscript: React.FC<{
             <AgentHead>
                 <AgentName>{agentName}</AgentName>
                 <AgentStatusBadge status={hunterStatus} />
+                {inputSummary && <AgentHeadSummary>{inputSummary}</AgentHeadSummary>}
             </AgentHead>
             <TranscriptShell data-testid="transcript-shell">
                 <ScrollArea data-testid="transcript-scroll" ref={scrollRef} onScroll={handleScroll}>
@@ -449,7 +461,7 @@ const AgentTranscript: React.FC<{
     );
 };
 
-const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) => {
+const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, inputSummary }) => {
     if (!result && !running) {
         return (
             <Placeholder>
@@ -520,6 +532,7 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) 
                         investigationStatus={result.status}
                         running={running}
                         resetKey={result.id}
+                        inputSummary={inputSummary}
                     />
                 );
             })}

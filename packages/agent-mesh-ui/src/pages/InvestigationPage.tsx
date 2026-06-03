@@ -34,42 +34,37 @@ const PageShell = styled.div`
     padding: ${variables.spacingMedium};
 `;
 
-const FormCard = styled.div`
-    background: ${variables.backgroundColorNavigation};
-    border: none;
-    border-left: 3px solid ${variables.accentColorL10};
-    border-radius: 0;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+const InputPanel = styled.div`
     box-sizing: border-box;
-    padding: ${variables.spacingLarge};
+    padding: ${variables.spacingSmall} 0 ${variables.spacingMedium};
     margin-bottom: ${variables.spacingSmall};
     flex: 0 0 auto;
     width: 100%;
 `;
 
-const FormCardCollapsed = styled(FormCard)`
-    padding: ${variables.spacingSmall} ${variables.spacingMedium};
-`;
-
-const FormSummary = styled.div`
+const InlineInputSummary = styled.div`
     display: flex;
     align-items: center;
-    gap: ${variables.spacingSmall} ${variables.spacingMedium};
+    justify-content: flex-end;
+    gap: ${variables.spacingSmall};
     flex-wrap: wrap;
+    min-width: 0;
 `;
 
-const FormSummaryText = styled.div`
-    flex: 1 1 320px;
+const InlineInputText = styled.div`
     min-width: 0;
-    color: ${variables.contentColorDefault};
+    max-width: min(760px, 52vw);
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 `;
 
-const FormSummaryMeta = styled.div`
+const InlineInputMeta = styled.div`
     color: ${variables.contentColorMuted};
     font-size: ${variables.fontSizeSmall};
+    white-space: nowrap;
 `;
 
 const FieldRow = styled.div`
@@ -390,7 +385,7 @@ const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
     return (
         <PageShell>
             {inputsExpanded ? (
-                <FormCard>
+                <InputPanel>
                     <FieldGroup>
                         <FieldLabel>Describe what to investigate</FieldLabel>
                         <TextArea
@@ -462,20 +457,8 @@ const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
                             />
                         )}
                     </ButtonRow>
-                </FormCard>
-            ) : (
-                <FormCardCollapsed>
-                    <FormSummary>
-                        <FormSummaryText title={description}>{description || 'Investigation inputs'}</FormSummaryText>
-                        {summaryMeta && <FormSummaryMeta>{summaryMeta}</FormSummaryMeta>}
-                        <Button
-                            label="Edit Inputs"
-                            appearance="subtle"
-                            onClick={() => setInputsExpanded(true)}
-                        />
-                    </FormSummary>
-                </FormCardCollapsed>
-            )}
+                </InputPanel>
+            ) : null}
 
             {error && (
                 <SectionGap>
@@ -490,6 +473,21 @@ const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
                     descriptors={descriptors}
                     result={result}
                     running={running}
+                    inputSummary={
+                        !inputsExpanded && (result || running) ? (
+                            <InlineInputSummary>
+                                <InlineInputText title={description}>
+                                    {description || 'Investigation inputs'}
+                                </InlineInputText>
+                                {summaryMeta && <InlineInputMeta>{summaryMeta}</InlineInputMeta>}
+                                <Button
+                                    label="Edit Inputs"
+                                    appearance="subtle"
+                                    onClick={() => setInputsExpanded(true)}
+                                />
+                            </InlineInputSummary>
+                        ) : null
+                    }
                 />
             </ReportRegion>
         </PageShell>
