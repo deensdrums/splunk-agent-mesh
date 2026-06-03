@@ -25,12 +25,42 @@ export const StyledConsoleMain = styled.div`
 export const StyledConsoleControls = styled.div`
     display: flex;
     flex: 0 0 auto;
-    justify-content: flex-end;
-    gap: ${variables.spacingSmall};
+    justify-content: space-between;
+    gap: ${variables.spacingMedium};
     align-items: center;
     width: 100%;
     box-sizing: border-box;
-    padding: ${variables.spacingSmall} ${variables.spacingMedium} 0;
+    padding: ${variables.spacingSmall} ${variables.spacingMedium};
+    border-bottom: 1px solid ${variables.borderColor};
+`;
+
+export const StyledConsoleTitleGroup = styled.div`
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: ${variables.spacingSmall};
+    min-width: 0;
+`;
+
+export const StyledConsoleTitle = styled.div`
+    color: ${variables.contentColorActive};
+    font-size: ${variables.fontSizeLarge};
+    font-weight: ${variables.fontWeightSemiBold};
+`;
+
+export const StyledConsoleMeta = styled.div`
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+`;
+
+export const StyledConsoleActions = styled.div`
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: ${variables.spacingSmall};
 `;
 
 export const StyledPanelFill = styled.div`

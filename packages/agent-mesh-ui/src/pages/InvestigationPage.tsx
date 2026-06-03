@@ -10,6 +10,19 @@ import InvestigationReport from '../components/InvestigationReport';
 import { apiClient, createInvestigationStream } from '../services/apiClient';
 import { canPollSplunkWebResults, pollSplunkSearchResults } from '../services/splunkSearchResults';
 
+export interface ConsoleChromeState {
+    status: InvestigationResult['status'] | null;
+    owner: string | null;
+    id: string | null;
+    isDemo: boolean;
+    canClear: boolean;
+    onClear: (() => void) | null;
+}
+
+interface Props {
+    onConsoleChromeChange?: (state: ConsoleChromeState) => void;
+}
+
 const PageShell = styled.div`
     display: flex;
     flex: 1 1 auto;
@@ -128,7 +141,7 @@ export function upsertArtifacts(current: Artifact[], updates: Artifact[]): Artif
     return Array.from(byId.values());
 }
 
-const InvestigationPage: React.FC = () => {
+const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
     const [description, setDescription] = useState('');
     const [host, setHost] = useState('');
     const [user, setUser] = useState('');
@@ -346,7 +359,7 @@ const InvestigationPage: React.FC = () => {
         }
     };
 
-    const clearInvestigation = () => {
+    const clearInvestigation = useCallback(() => {
         streamRef.current?.close();
         searchPollersRef.current.forEach((poller) => poller.close());
         searchPollersRef.current.clear();
@@ -354,7 +367,18 @@ const InvestigationPage: React.FC = () => {
         setError(null);
         setIsDemo(false);
         setInputsExpanded(true);
-    };
+    }, []);
+
+    useEffect(() => {
+        onConsoleChromeChange?.({
+            status: result?.status ?? (running ? 'running' : null),
+            owner: result?.owner ?? null,
+            id: result?.id ?? null,
+            isDemo,
+            canClear: Boolean(result || running),
+            onClear: result || running ? clearInvestigation : null,
+        });
+    }, [clearInvestigation, isDemo, onConsoleChromeChange, result, running]);
 
     const summaryMeta = [
         host && `Host ${host}`,
@@ -466,8 +490,6 @@ const InvestigationPage: React.FC = () => {
                     descriptors={descriptors}
                     result={result}
                     running={running}
-                    isDemo={isDemo}
-                    onClear={clearInvestigation}
                 />
             </ReportRegion>
         </PageShell>

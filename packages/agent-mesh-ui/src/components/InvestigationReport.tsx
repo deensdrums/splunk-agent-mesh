@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { variables } from '@splunk/themes';
-import Button from '@splunk/react-ui/Button';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import {
@@ -22,23 +21,7 @@ interface Props {
     descriptors: AgentDescriptor[];
     result: InvestigationResult | null;
     running: boolean;
-    isDemo?: boolean;
-    onClear: () => void;
 }
-
-// Badge shown in the toolbar when the run is the deterministic demo replay.
-const DemoBadge = styled.span`
-    display: inline-block;
-    margin-left: ${variables.spacingSmall};
-    padding: 1px 8px;
-    border-radius: 10px;
-    font-size: ${variables.fontSizeSmall};
-    font-weight: ${variables.fontWeightSemiBold};
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    background: ${variables.statusColorInfo};
-    color: ${variables.contentColorActive};
-`;
 
 // Cards reveal one at a time (even when several events arrive in one response)
 // and fade/slide in as they paint.
@@ -102,34 +85,6 @@ const Container = styled.div`
     min-height: 0;
     width: 100%;
     overflow: hidden;
-`;
-
-const Toolbar = styled.div`
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: ${variables.spacingMedium};
-    padding: 0 0 ${variables.spacingSmall};
-    border-bottom: 1px solid ${variables.borderColor};
-`;
-
-const ToolbarTitle = styled.div`
-    font-size: ${variables.fontSizeLarge};
-    font-weight: ${variables.fontWeightSemiBold};
-    color: ${variables.contentColorActive};
-`;
-
-const ToolbarGroup = styled.div`
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: ${variables.spacingSmall};
-`;
-
-const ToolbarMeta = styled.div`
-    color: ${variables.contentColorMuted};
-    font-size: ${variables.fontSizeSmall};
 `;
 
 const AgentSection = styled.div`
@@ -494,7 +449,7 @@ const AgentTranscript: React.FC<{
     );
 };
 
-const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, isDemo, onClear }) => {
+const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) => {
     if (!result && !running) {
         return (
             <Placeholder>
@@ -542,23 +497,6 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, is
 
     return (
         <Container>
-            <Toolbar>
-                <ToolbarGroup>
-                    <ToolbarTitle>Investigation Console</ToolbarTitle>
-                    {isDemo && (
-                        <DemoBadge title="Replayed demo investigation — no live LLM or Splunk calls.">
-                            Demo data
-                        </DemoBadge>
-                    )}
-                    <ToolbarMeta>
-                        {result.status}
-                        {result.owner ? ` · ${result.owner}` : ''}
-                        {result.id ? ` · ${result.id}` : ''}
-                    </ToolbarMeta>
-                </ToolbarGroup>
-                <Button label="Clear" appearance="subtle" onClick={onClear} />
-            </Toolbar>
-
             {result.error && (
                 <Message type="error" appearance="fill">
                     {result.error}

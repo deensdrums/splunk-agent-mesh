@@ -105,7 +105,7 @@ describe('InvestigationReport console', () => {
     });
 
     test('renders focused first-use empty-state guidance before a run starts', () => {
-        render(<InvestigationReport descriptors={[]} result={null} running={false} onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={null} running={false} />);
 
         expect(screen.getByText('Start an investigation')).toBeInTheDocument();
         expect(screen.getByText(/The Threat Hunter will stream evidence/i)).toBeInTheDocument();
@@ -120,29 +120,25 @@ describe('InvestigationReport console', () => {
             agents: {},
         };
 
-        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={result} running />);
 
-        expect(screen.getByText('Investigation Console')).toBeInTheDocument();
         expect(screen.getAllByText('Threat Hunter')).toHaveLength(2);
         expect(screen.getByText('Starting investigation…')).toBeInTheDocument();
         expect(screen.getByTestId('transcript-status')).toHaveTextContent('Investigationrunning');
     });
 
-    test('shows progressive event count and invokes clear from the toolbar', () => {
-        const onClear = jest.fn();
-        render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={onClear} />);
+    test('shows progressive event count', () => {
+        render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running />);
 
         act(() => {
             jest.advanceTimersByTime(330);
         });
 
         expect(screen.getByTestId('transcript-status')).toHaveTextContent('Events1/1');
-        fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
-        expect(onClear).toHaveBeenCalledTimes(1);
     });
 
     test('keeps the transcript shell and event cards full width from first reveal', () => {
-        render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running />);
 
         act(() => {
             jest.advanceTimersByTime(330);
@@ -154,7 +150,7 @@ describe('InvestigationReport console', () => {
 
     test('auto-follows new events until the analyst scrolls upward', () => {
         const { rerender } = render(
-            <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />
+            <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running />
         );
         const scrollArea = screen.getByTestId('transcript-scroll');
         Object.defineProperties(scrollArea, {
@@ -175,7 +171,6 @@ describe('InvestigationReport console', () => {
                 descriptors={[]}
                 result={resultWithEvents([EVENT_ONE, EVENT_TWO])}
                 running
-                onClear={jest.fn()}
             />
         );
         act(() => {
@@ -190,7 +185,7 @@ describe('InvestigationReport console', () => {
         const result = resultWithEvents([SEARCH_EVENT]);
         result.artifacts = [SEARCH_ARTIFACT];
 
-        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={result} running />);
         act(() => {
             jest.advanceTimersByTime(330);
         });
@@ -206,7 +201,7 @@ describe('InvestigationReport console', () => {
         const result = resultWithEvents([SEARCH_EVENT]);
         result.artifacts = [{ ...SEARCH_ARTIFACT, status: 'running', _revision: 2 }];
 
-        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={result} running />);
         act(() => {
             jest.advanceTimersByTime(330);
         });
@@ -221,7 +216,7 @@ describe('InvestigationReport console', () => {
         const result = resultWithEvents([SEARCH_EVENT]);
         result.artifacts = [{ ...SEARCH_ARTIFACT, status: 'running', _revision: 2 }];
 
-        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={result} running />);
         act(() => {
             jest.advanceTimersByTime(330);
         });
@@ -233,7 +228,7 @@ describe('InvestigationReport console', () => {
         const result = resultWithEvents([SEARCH_EVENT]);
         result.artifacts = [SEARCH_ARTIFACT]; // status: 'done'
 
-        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={result} running />);
         act(() => {
             jest.advanceTimersByTime(330);
         });
@@ -247,7 +242,6 @@ describe('InvestigationReport console', () => {
                 descriptors={[]}
                 result={resultWithEvents([EVENT_ONE, HANDOFF_EVENT])}
                 running
-                onClear={jest.fn()}
             />
         );
         // Each reveal step needs its own act() so the next timer is scheduled.
@@ -265,7 +259,7 @@ describe('InvestigationReport console', () => {
         const result = resultWithEvents([EVENT_ONE, HANDOFF_EVENT]);
         result.agents.spl_hunter.phase = 'delegating';
 
-        render(<InvestigationReport descriptors={[]} result={result} running onClear={jest.fn()} />);
+        render(<InvestigationReport descriptors={[]} result={result} running />);
         act(() => {
             jest.advanceTimersByTime(330);
         });
@@ -275,7 +269,7 @@ describe('InvestigationReport console', () => {
 
     test('shows a working label while active and hides it after the final event is revealed', () => {
         const { rerender } = render(
-            <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />
+            <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running />
         );
         act(() => {
             jest.advanceTimersByTime(330);
@@ -287,7 +281,6 @@ describe('InvestigationReport console', () => {
                 descriptors={[]}
                 result={resultWithEvents([EVENT_ONE, FINAL_EVENT])}
                 running
-                onClear={jest.fn()}
             />
         );
         act(() => {

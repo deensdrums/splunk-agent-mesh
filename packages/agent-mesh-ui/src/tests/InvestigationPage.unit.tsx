@@ -1,7 +1,7 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import InvestigationPage, { upsertArtifacts } from '../pages/InvestigationPage';
+import InvestigationPage, { ConsoleChromeState, upsertArtifacts } from '../pages/InvestigationPage';
 
 jest.mock('@splunk/themes', () => ({
     variables: new Proxy({}, { get: () => '0px' }),
@@ -24,8 +24,8 @@ jest.mock('@splunk/react-ui/Text', () => ({ value, onChange, placeholder }: any)
 jest.mock('@splunk/react-ui/Message', () => ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
 ));
-jest.mock('../components/InvestigationReport', () => ({ result, onClear }: any) => (
-    <div>{result && <button type="button" onClick={onClear}>Clear</button>}</div>
+jest.mock('../components/InvestigationReport', () => ({ result }: any) => (
+    <div>{result && <span>Report ready</span>}</div>
 ));
 jest.mock('../services/apiClient', () => ({
     apiClient: {
@@ -39,7 +39,8 @@ jest.mock('../services/apiClient', () => ({
 }));
 
 test('collapses inputs when a run starts and expands them when the console is cleared', async () => {
-    render(<InvestigationPage />);
+    let chrome: ConsoleChromeState | null = null;
+    render(<InvestigationPage onConsoleChromeChange={(state) => { chrome = state; }} />);
 
     expect(screen.getByText('Describe what to investigate')).toBeInTheDocument();
     fireEvent.change(screen.getAllByRole('textbox')[0], {
@@ -51,8 +52,10 @@ test('collapses inputs when a run starts and expands them when the console is cl
     expect(screen.queryByText('Describe what to investigate')).not.toBeInTheDocument();
     expect(screen.getByText('Investigate suspicious PowerShell activity.')).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await waitFor(() => expect(chrome?.canClear).toBe(true));
+    act(() => {
+        chrome?.onClear?.();
+    });
     expect(screen.getByText('Describe what to investigate')).toBeInTheDocument();
 });
 

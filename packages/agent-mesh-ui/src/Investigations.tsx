@@ -3,12 +3,16 @@ import Button from '@splunk/react-ui/Button';
 import Modal from '@splunk/react-ui/Modal';
 import {
     StyledAppContainer,
+    StyledConsoleActions,
     StyledConsoleControls,
     StyledConsoleMain,
+    StyledConsoleMeta,
+    StyledConsoleTitle,
+    StyledConsoleTitleGroup,
     StyledModalContent,
     StyledPanelFill,
 } from './InvestigationsStyles';
-import InvestigationPage from './pages/InvestigationPage';
+import InvestigationPage, { ConsoleChromeState } from './pages/InvestigationPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
 
@@ -20,6 +24,14 @@ const Investigations: React.FC = () => {
     const aboutButtonRef = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
     const [shellHeight, setShellHeight] = useState<number>();
     const [overlay, setOverlay] = useState<Overlay>(null);
+    const [consoleChrome, setConsoleChrome] = useState<ConsoleChromeState>({
+        status: null,
+        owner: null,
+        id: null,
+        isDemo: false,
+        canClear: false,
+        onClear: null,
+    });
 
     useEffect(() => {
         const updateShellHeight = () => {
@@ -33,28 +45,43 @@ const Investigations: React.FC = () => {
     }, []);
 
     const closeOverlay = () => setOverlay(null);
+    const consoleMeta = [
+        consoleChrome.status,
+        consoleChrome.owner,
+        consoleChrome.id,
+    ].filter(Boolean).join(' · ');
 
     return (
         <StyledAppContainer ref={containerRef} $height={shellHeight} data-testid="investigations-shell">
             <StyledConsoleControls aria-label="Console controls">
-                <Button
-                    appearance="secondary"
-                    elementRef={settingsButtonRef}
-                    icon={<span aria-hidden="true">⚙</span>}
-                    label="Settings"
-                    onClick={() => setOverlay('settings')}
-                />
-                <Button
-                    appearance="subtle"
-                    elementRef={aboutButtonRef}
-                    icon={<span aria-hidden="true">i</span>}
-                    label="About"
-                    onClick={() => setOverlay('about')}
-                />
+                <StyledConsoleTitleGroup>
+                    <StyledConsoleTitle>Investigation Console</StyledConsoleTitle>
+                    {consoleChrome.isDemo && <StyledConsoleMeta>Demo data</StyledConsoleMeta>}
+                    {consoleMeta && <StyledConsoleMeta>{consoleMeta}</StyledConsoleMeta>}
+                </StyledConsoleTitleGroup>
+                <StyledConsoleActions>
+                    {consoleChrome.canClear && (
+                        <Button label="Clear" appearance="subtle" onClick={() => consoleChrome.onClear?.()} />
+                    )}
+                    <Button
+                        appearance="secondary"
+                        elementRef={settingsButtonRef}
+                        icon={<span aria-hidden="true">⚙</span>}
+                        label="Settings"
+                        onClick={() => setOverlay('settings')}
+                    />
+                    <Button
+                        appearance="subtle"
+                        elementRef={aboutButtonRef}
+                        icon={<span aria-hidden="true">i</span>}
+                        label="About"
+                        onClick={() => setOverlay('about')}
+                    />
+                </StyledConsoleActions>
             </StyledConsoleControls>
             <StyledConsoleMain>
                 <StyledPanelFill>
-                    <InvestigationPage />
+                    <InvestigationPage onConsoleChromeChange={setConsoleChrome} />
                 </StyledPanelFill>
             </StyledConsoleMain>
             <Modal
