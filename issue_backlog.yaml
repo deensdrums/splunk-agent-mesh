@@ -102,8 +102,8 @@ stories:
   origin_thought_ids:
   - BD-04
   recommendation: Do next
-  status: Proposed
-  reviewer_notes: ''
+  status: In progress
+  reviewer_notes: 'Implemented full-bleed console shell while keeping current tabs temporary for UI-002. Removed the redundant page heading/tagline, removed outer Splunk page margins, made the app shell measure and fill the available viewport below the Splunk chrome, converted InvestigationPage and InvestigationReport to flex-owned height, and constrained overflow so the transcript/event area is the normal scrolling surface. Kept layout independent from the tab implementation so Settings/About can move behind console-native controls in UI-002 without reworking the console height model. Verified with frontend Jest, TypeScript, lint, and stylelint.'
 
 - order: 6
   story_id: UI-002
@@ -123,8 +123,8 @@ stories:
   origin_thought_ids:
   - BD-04
   recommendation: Do next
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Removed the top-level TabLayout from Investigations and made InvestigationPage the persistent primary console surface. Added absolute console controls with a visible Settings gear and About action. Settings and About now open in Splunk React UI Modal overlays with close button/Escape behavior and focus return, so they do not consume workspace height and do not unmount the running investigation. Tests cover absence of tab navigation, opening settings without losing the Start Investigation button, and Escape-close behavior. Verified with frontend Jest and TypeScript during implementation.'
 
 - order: 7
   story_id: CFG-001

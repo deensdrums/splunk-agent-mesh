@@ -10,12 +10,41 @@ import InvestigationReport from '../components/InvestigationReport';
 import { apiClient, createInvestigationStream } from '../services/apiClient';
 import { canPollSplunkWebResults, pollSplunkSearchResults } from '../services/splunkSearchResults';
 
+export interface ConsoleChromeState {
+    status: InvestigationResult['status'] | null;
+    owner: string | null;
+    id: string | null;
+    isDemo: boolean;
+    canClear: boolean;
+    onClear: (() => void) | null;
+}
+
+interface Props {
+    onConsoleChromeChange?: (state: ConsoleChromeState) => void;
+}
+
+const PageShell = styled.div`
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: ${variables.spacingMedium};
+`;
+
 const FormCard = styled.div`
     background: ${variables.backgroundColorNavigation};
-    border: 1px solid ${variables.borderColor};
-    border-radius: 4px;
+    border: none;
+    border-left: 3px solid ${variables.accentColorL10};
+    border-radius: 0;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+    box-sizing: border-box;
     padding: ${variables.spacingLarge};
-    margin-bottom: ${variables.spacingMedium};
+    margin-bottom: ${variables.spacingSmall};
+    flex: 0 0 auto;
+    width: 100%;
 `;
 
 const FormCardCollapsed = styled(FormCard)`
@@ -73,7 +102,15 @@ const ButtonRow = styled.div`
 `;
 
 const SectionGap = styled.div`
-    margin-bottom: ${variables.spacingMedium};
+    flex: 0 0 auto;
+    margin-bottom: ${variables.spacingSmall};
+`;
+
+const ReportRegion = styled.div`
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
 `;
 
 const DEMO_FORM: InvestigationRequest = {
@@ -104,7 +141,7 @@ export function upsertArtifacts(current: Artifact[], updates: Artifact[]): Artif
     return Array.from(byId.values());
 }
 
-const InvestigationPage: React.FC = () => {
+const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
     const [description, setDescription] = useState('');
     const [host, setHost] = useState('');
     const [user, setUser] = useState('');
@@ -322,7 +359,7 @@ const InvestigationPage: React.FC = () => {
         }
     };
 
-    const clearInvestigation = () => {
+    const clearInvestigation = useCallback(() => {
         streamRef.current?.close();
         searchPollersRef.current.forEach((poller) => poller.close());
         searchPollersRef.current.clear();
@@ -330,7 +367,18 @@ const InvestigationPage: React.FC = () => {
         setError(null);
         setIsDemo(false);
         setInputsExpanded(true);
-    };
+    }, []);
+
+    useEffect(() => {
+        onConsoleChromeChange?.({
+            status: result?.status ?? (running ? 'running' : null),
+            owner: result?.owner ?? null,
+            id: result?.id ?? null,
+            isDemo,
+            canClear: Boolean(result || running),
+            onClear: result || running ? clearInvestigation : null,
+        });
+    }, [clearInvestigation, isDemo, onConsoleChromeChange, result, running]);
 
     const summaryMeta = [
         host && `Host ${host}`,
@@ -340,7 +388,7 @@ const InvestigationPage: React.FC = () => {
     ].filter(Boolean).join(' · ');
 
     return (
-        <div>
+        <PageShell>
             {inputsExpanded ? (
                 <FormCard>
                     <FieldGroup>
@@ -437,14 +485,14 @@ const InvestigationPage: React.FC = () => {
                 </SectionGap>
             )}
 
-            <InvestigationReport
-                descriptors={descriptors}
-                result={result}
-                running={running}
-                isDemo={isDemo}
-                onClear={clearInvestigation}
-            />
-        </div>
+            <ReportRegion>
+                <InvestigationReport
+                    descriptors={descriptors}
+                    result={result}
+                    running={running}
+                />
+            </ReportRegion>
+        </PageShell>
     );
 };
 

@@ -3,8 +3,12 @@ import { variables, mixins } from '@splunk/themes';
 
 export const StyledContainer = styled.div`
     ${mixins.reset('inline')};
-    display: block;
+    display: flex;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
     font-size: ${variables.fontSizeLarge};
-    line-height: 200%;
-    margin: ${variables.spacingXXLarge} ${variables.spacingXXLarge};
+    line-height: normal;
+    margin: 0;
 `;

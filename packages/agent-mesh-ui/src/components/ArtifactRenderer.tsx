@@ -14,6 +14,8 @@ interface Props {
 }
 
 const Card = styled.div`
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid ${variables.borderColor};
     border-radius: 4px;
     background: ${variables.backgroundColorNavigation};
@@ -43,6 +45,8 @@ const Body = styled.div`
 `;
 
 const EmbeddedArtifact = styled.div`
+    width: 100%;
+    box-sizing: border-box;
     margin-top: ${variables.spacingMedium};
     padding-top: ${variables.spacingSmall};
     border-top: 1px solid ${variables.borderColor};
@@ -57,6 +61,8 @@ const EmbeddedMeta = styled.div`
 `;
 
 const SplBlock = styled.pre`
+    box-sizing: border-box;
+    width: 100%;
     background: ${variables.backgroundColorSidebar};
     border: 1px solid ${variables.borderColor};
     border-radius: 4px;

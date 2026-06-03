@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { variables } from '@splunk/themes';
-import Button from '@splunk/react-ui/Button';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import {
@@ -22,35 +21,13 @@ interface Props {
     descriptors: AgentDescriptor[];
     result: InvestigationResult | null;
     running: boolean;
-    isDemo?: boolean;
-    onClear: () => void;
 }
-
-// Badge shown in the toolbar when the run is the deterministic demo replay.
-const DemoBadge = styled.span`
-    display: inline-block;
-    margin-left: ${variables.spacingSmall};
-    padding: 1px 8px;
-    border-radius: 10px;
-    font-size: ${variables.fontSizeSmall};
-    font-weight: ${variables.fontWeightSemiBold};
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    background: ${variables.statusColorInfo};
-    color: ${variables.contentColorActive};
-`;
 
 // Cards reveal one at a time (even when several events arrive in one response)
 // and fade/slide in as they paint.
 const STAGGER_INTERVAL_MS = 330;
 // Treat the view as "stuck to bottom" if within this many px of the end.
 const STICK_THRESHOLD_PX = 40;
-// Leave a small gutter below the workbench so it does not sit flush against the
-// viewport edge. On short screens, keep enough height for a usable transcript
-// and allow the document to scroll naturally.
-const VIEWPORT_GUTTER_PX = 16;
-const MIN_WORKBENCH_HEIGHT_PX = 360;
-
 const fadeSlideIn = keyframes`
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -101,39 +78,13 @@ const HUNTER_TONE: Record<AgentRunStatus, Tone> = {
 
 // ---- Layout primitives ----
 
-const Container = styled.div<{ $height: number }>`
+const Container = styled.div`
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
-    height: ${({ $height }) => `${$height}px`};
-    min-height: ${MIN_WORKBENCH_HEIGHT_PX}px;
-`;
-
-const Toolbar = styled.div`
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: ${variables.spacingMedium};
-    padding: 0 0 ${variables.spacingSmall};
-    border-bottom: 1px solid ${variables.borderColor};
-`;
-
-const ToolbarTitle = styled.div`
-    font-size: ${variables.fontSizeLarge};
-    font-weight: ${variables.fontWeightSemiBold};
-    color: ${variables.contentColorActive};
-`;
-
-const ToolbarGroup = styled.div`
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: ${variables.spacingSmall};
-`;
-
-const ToolbarMeta = styled.div`
-    color: ${variables.contentColorMuted};
-    font-size: ${variables.fontSizeSmall};
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
 `;
 
 const AgentSection = styled.div`
@@ -141,6 +92,7 @@ const AgentSection = styled.div`
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
+    width: 100%;
     padding-top: ${variables.spacingSmall};
 `;
 
@@ -164,6 +116,8 @@ const TranscriptShell = styled.div`
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
     border-top: 1px solid ${variables.borderColor};
     border-bottom: 1px solid ${variables.borderColor};
     overflow: hidden;
@@ -173,6 +127,8 @@ const TranscriptShell = styled.div`
 const ScrollArea = styled.div`
     flex: 1 1 auto;
     min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
     overflow-y: auto;
 
     /* Extra bottom padding keeps the newest auto-scrolled card clear of the
@@ -181,6 +137,8 @@ const ScrollArea = styled.div`
 `;
 
 const RevealItem = styled.div`
+    width: 100%;
+    box-sizing: border-box;
     animation: ${fadeSlideIn} 165ms ease-out;
 `;
 
@@ -252,12 +210,56 @@ const MonoId = styled.span`
 
 const Placeholder = styled.div`
     display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    width: 100%;
+    padding: ${variables.spacingXLarge};
+    color: ${variables.contentColorMuted};
+`;
+
+const EmptyStateBlock = styled.div`
+    max-width: 640px;
+    text-align: left;
+`;
+
+const EmptyKicker = styled.div`
+    margin-bottom: ${variables.spacingSmall};
+    color: ${variables.accentColorL10};
+    font-size: ${variables.fontSizeSmall};
+    font-weight: ${variables.fontWeightSemiBold};
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+`;
+
+const EmptyTitle = styled.div`
+    margin-bottom: ${variables.spacingSmall};
+    color: ${variables.contentColorActive};
+    font-size: 24px;
+    font-weight: ${variables.fontWeightSemiBold};
+    line-height: 1.25;
+`;
+
+const EmptyStateBody = styled.div`
+    color: ${variables.contentColorDefault};
+    font-size: ${variables.fontSizeLarge};
+    line-height: 1.55;
+`;
+
+const EmptyHint = styled.div`
+    margin-top: ${variables.spacingMedium};
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
+    line-height: 1.5;
+`;
+
+const StartingState = styled.div`
+    display: flex;
     align-items: center;
     gap: ${variables.spacingSmall};
-    border: 1px solid ${variables.borderColor};
-    border-radius: 6px;
-    padding: ${variables.spacingLarge};
     color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeLarge};
 `;
 
 // Authoritative labels when the backend reports its phase. Preferred over the
@@ -415,7 +417,7 @@ const AgentTranscript: React.FC<{
                 <AgentName>{agentName}</AgentName>
                 <AgentStatusBadge status={hunterStatus} />
             </AgentHead>
-            <TranscriptShell>
+            <TranscriptShell data-testid="transcript-shell">
                 <ScrollArea data-testid="transcript-scroll" ref={scrollRef} onScroll={handleScroll}>
                     {body}
                 </ScrollArea>
@@ -447,28 +449,21 @@ const AgentTranscript: React.FC<{
     );
 };
 
-const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, isDemo, onClear }) => {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [workbenchHeight, setWorkbenchHeight] = useState(MIN_WORKBENCH_HEIGHT_PX);
-
-    useEffect(() => {
-        const updateWorkbenchHeight = () => {
-            const top = containerRef.current?.getBoundingClientRect().top;
-            if (top === undefined) {
-                return;
-            }
-            setWorkbenchHeight(Math.max(MIN_WORKBENCH_HEIGHT_PX, window.innerHeight - top - VIEWPORT_GUTTER_PX));
-        };
-
-        updateWorkbenchHeight();
-        window.addEventListener('resize', updateWorkbenchHeight);
-        return () => window.removeEventListener('resize', updateWorkbenchHeight);
-    });
-
+const InvestigationReport: React.FC<Props> = ({ descriptors, result, running }) => {
     if (!result && !running) {
         return (
             <Placeholder>
-                <Message type="info">Run an investigation to populate the report.</Message>
+                <EmptyStateBlock>
+                    <EmptyKicker>Investigation console</EmptyKicker>
+                    <EmptyTitle>Start an investigation</EmptyTitle>
+                    <EmptyStateBody>
+                        Describe an alert, host, user, or suspicious behavior. The Threat Hunter will stream
+                        evidence, searches, findings, and a final summary here.
+                    </EmptyStateBody>
+                    <EmptyHint>
+                        Use Run Demo Investigation to preview the console with sample data.
+                    </EmptyHint>
+                </EmptyStateBlock>
             </Placeholder>
         );
     }
@@ -476,7 +471,9 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, is
     if (!result && running) {
         return (
             <Placeholder>
-                <WaitSpinner size="medium" /> Starting investigation…
+                <StartingState>
+                    <WaitSpinner size="medium" /> Starting investigation…
+                </StartingState>
             </Placeholder>
         );
     }
@@ -499,24 +496,7 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, is
     }
 
     return (
-        <Container ref={containerRef} $height={workbenchHeight}>
-            <Toolbar>
-                <ToolbarGroup>
-                    <ToolbarTitle>Investigation Console</ToolbarTitle>
-                    {isDemo && (
-                        <DemoBadge title="Replayed demo investigation — no live LLM or Splunk calls.">
-                            Demo data
-                        </DemoBadge>
-                    )}
-                    <ToolbarMeta>
-                        {result.status}
-                        {result.owner ? ` · ${result.owner}` : ''}
-                        {result.id ? ` · ${result.id}` : ''}
-                    </ToolbarMeta>
-                </ToolbarGroup>
-                <Button label="Clear" appearance="subtle" onClick={onClear} />
-            </Toolbar>
-
+        <Container>
             {result.error && (
                 <Message type="error" appearance="fill">
                     {result.error}
