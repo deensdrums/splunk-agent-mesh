@@ -104,6 +104,14 @@ describe('InvestigationReport console', () => {
         jest.useRealTimers();
     });
 
+    test('renders focused first-use empty-state guidance before a run starts', () => {
+        render(<InvestigationReport descriptors={[]} result={null} running={false} onClear={jest.fn()} />);
+
+        expect(screen.getByText('Start an investigation')).toBeInTheDocument();
+        expect(screen.getByText(/The Threat Hunter will stream evidence/i)).toBeInTheDocument();
+        expect(screen.queryByText(/Run an investigation to populate the report/i)).not.toBeInTheDocument();
+    });
+
     test('renders a pending Threat Hunter console before agent order arrives', () => {
         const result: InvestigationResult = {
             id: 'inv-pending',

@@ -16,17 +16,22 @@ const PageShell = styled.div`
     flex-direction: column;
     min-height: 0;
     width: 100%;
+    box-sizing: border-box;
     overflow: hidden;
     padding: ${variables.spacingMedium};
 `;
 
 const FormCard = styled.div`
     background: ${variables.backgroundColorNavigation};
-    border: 1px solid ${variables.borderColor};
-    border-radius: 4px;
+    border: none;
+    border-left: 3px solid ${variables.accentColorL10};
+    border-radius: 0;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+    box-sizing: border-box;
     padding: ${variables.spacingLarge};
     margin-bottom: ${variables.spacingSmall};
     flex: 0 0 auto;
+    width: 100%;
 `;
 
 const FormCardCollapsed = styled(FormCard)`

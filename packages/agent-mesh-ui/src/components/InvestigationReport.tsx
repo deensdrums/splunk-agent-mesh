@@ -250,11 +250,54 @@ const Placeholder = styled.div`
     display: flex;
     flex: 1 1 auto;
     align-items: center;
-    gap: ${variables.spacingSmall};
-    border: 1px solid ${variables.borderColor};
-    border-radius: 6px;
-    padding: ${variables.spacingLarge};
+    justify-content: center;
+    min-height: 0;
+    width: 100%;
+    padding: ${variables.spacingXLarge};
     color: ${variables.contentColorMuted};
+`;
+
+const EmptyStateBlock = styled.div`
+    max-width: 640px;
+    text-align: left;
+`;
+
+const EmptyKicker = styled.div`
+    margin-bottom: ${variables.spacingSmall};
+    color: ${variables.accentColorL10};
+    font-size: ${variables.fontSizeSmall};
+    font-weight: ${variables.fontWeightSemiBold};
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+`;
+
+const EmptyTitle = styled.div`
+    margin-bottom: ${variables.spacingSmall};
+    color: ${variables.contentColorActive};
+    font-size: 24px;
+    font-weight: ${variables.fontWeightSemiBold};
+    line-height: 1.25;
+`;
+
+const EmptyStateBody = styled.div`
+    color: ${variables.contentColorDefault};
+    font-size: ${variables.fontSizeLarge};
+    line-height: 1.55;
+`;
+
+const EmptyHint = styled.div`
+    margin-top: ${variables.spacingMedium};
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
+    line-height: 1.5;
+`;
+
+const StartingState = styled.div`
+    display: flex;
+    align-items: center;
+    gap: ${variables.spacingSmall};
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeLarge};
 `;
 
 // Authoritative labels when the backend reports its phase. Preferred over the
@@ -448,7 +491,17 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, is
     if (!result && !running) {
         return (
             <Placeholder>
-                <Message type="info">Run an investigation to populate the report.</Message>
+                <EmptyStateBlock>
+                    <EmptyKicker>Investigation console</EmptyKicker>
+                    <EmptyTitle>Start an investigation</EmptyTitle>
+                    <EmptyStateBody>
+                        Describe an alert, host, user, or suspicious behavior. The Threat Hunter will stream
+                        evidence, searches, findings, and a final summary here.
+                    </EmptyStateBody>
+                    <EmptyHint>
+                        Use Run Demo Investigation to preview the console with sample data.
+                    </EmptyHint>
+                </EmptyStateBlock>
             </Placeholder>
         );
     }
@@ -456,7 +509,9 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, is
     if (!result && running) {
         return (
             <Placeholder>
-                <WaitSpinner size="medium" /> Starting investigation…
+                <StartingState>
+                    <WaitSpinner size="medium" /> Starting investigation…
+                </StartingState>
             </Placeholder>
         );
     }
