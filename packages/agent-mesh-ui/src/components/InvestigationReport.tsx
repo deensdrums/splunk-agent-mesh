@@ -137,6 +137,7 @@ const AgentSection = styled.div`
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
+    width: 100%;
     padding-top: ${variables.spacingSmall};
 `;
 
@@ -160,6 +161,8 @@ const TranscriptShell = styled.div`
     flex: 1 1 auto;
     flex-direction: column;
     min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
     border-top: 1px solid ${variables.borderColor};
     border-bottom: 1px solid ${variables.borderColor};
     overflow: hidden;
@@ -169,6 +172,8 @@ const TranscriptShell = styled.div`
 const ScrollArea = styled.div`
     flex: 1 1 auto;
     min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
     overflow-y: auto;
 
     /* Extra bottom padding keeps the newest auto-scrolled card clear of the
@@ -177,6 +182,8 @@ const ScrollArea = styled.div`
 `;
 
 const RevealItem = styled.div`
+    width: 100%;
+    box-sizing: border-box;
     animation: ${fadeSlideIn} 165ms ease-out;
 `;
 
@@ -455,7 +462,7 @@ const AgentTranscript: React.FC<{
                 <AgentName>{agentName}</AgentName>
                 <AgentStatusBadge status={hunterStatus} />
             </AgentHead>
-            <TranscriptShell>
+            <TranscriptShell data-testid="transcript-shell">
                 <ScrollArea data-testid="transcript-scroll" ref={scrollRef} onScroll={handleScroll}>
                     {body}
                 </ScrollArea>

@@ -141,6 +141,17 @@ describe('InvestigationReport console', () => {
         expect(onClear).toHaveBeenCalledTimes(1);
     });
 
+    test('keeps the transcript shell and event cards full width from first reveal', () => {
+        render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />);
+
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        expect(screen.getByTestId('transcript-shell')).toBeInTheDocument();
+        expect(screen.getByTestId('event-card')).toBeInTheDocument();
+    });
+
     test('auto-follows new events until the analyst scrolls upward', () => {
         const { rerender } = render(
             <InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_ONE])} running onClear={jest.fn()} />

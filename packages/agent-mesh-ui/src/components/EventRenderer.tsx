@@ -21,6 +21,8 @@ interface Props {
 }
 
 const EventCard = styled.div<{ accent: string; $isCurrent: boolean }>`
+    width: 100%;
+    box-sizing: border-box;
     border-left: 3px solid ${({ accent }) => accent};
     background: ${({ $isCurrent }) =>
         $isCurrent ? variables.backgroundColorSidebar : variables.backgroundColorNavigation};
@@ -55,6 +57,8 @@ const EventText = styled.div`
 `;
 
 const SplBlock = styled.pre`
+    box-sizing: border-box;
+    width: 100%;
     background: ${variables.backgroundColorSidebar};
     border: 1px solid ${variables.borderColor};
     border-radius: 4px;
@@ -131,7 +135,7 @@ const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false }) 
     const payload = event.payload || {};
 
     return (
-        <EventCard accent={accent} $isCurrent={isCurrent}>
+        <EventCard accent={accent} $isCurrent={isCurrent} data-testid="event-card">
             <EventHead>
                 <TypeTag accent={accent}>{TYPE_LABELS[event.type] || event.type}</TypeTag>
                 <EventTitle>{event.title}</EventTitle>
