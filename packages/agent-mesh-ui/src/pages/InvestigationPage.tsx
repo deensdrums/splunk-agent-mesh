@@ -9,7 +9,6 @@ import { AgentDescriptor, Artifact, InvestigationRequest, InvestigationResult } 
 import InvestigationReport from '../components/InvestigationReport';
 import { apiClient, createInvestigationStream } from '../services/apiClient';
 import { canPollSplunkWebResults, pollSplunkSearchResults } from '../services/splunkSearchResults';
-import { DEMO_RESULT } from '../demo/demoData';
 
 const FormCard = styled.div`
     background: ${variables.backgroundColorNavigation};
@@ -79,10 +78,9 @@ const SectionGap = styled.div`
 
 const DEMO_FORM: InvestigationRequest = {
     description:
-        'winword.exe spawned powershell.exe with an encoded command on FIN-LAPTOP-22. User jsmith. Possible data exfiltration to external IP.',
-    host: 'FIN-LAPTOP-22',
-    user: 'jsmith',
-    alert_name: 'Office Spawns Encoded PowerShell',
+        'IDS flagged JNDI (jndi:ldap) lookup strings hitting public web servers web-prod-04 and web-prod-07. Possible Log4Shell exploitation.',
+    host: 'web-prod-04',
+    alert_name: 'Log4Shell Exploitation Attempt',
     time_range: '-4h',
     demo: true,
 };
@@ -117,6 +115,7 @@ const InvestigationPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [descriptors, setDescriptors] = useState<AgentDescriptor[]>([]);
     const [inputsExpanded, setInputsExpanded] = useState(true);
+    const [isDemo, setIsDemo] = useState(false);
     const streamRef = useRef<{ close: () => void } | null>(null);
     const searchPollersRef = useRef<Map<string, { close: () => void }>>(new Map());
 
@@ -279,8 +278,9 @@ const InvestigationPage: React.FC = () => {
         [descriptors.length]
     );
 
-    const runInvestigation = async (isDemo: boolean, override?: InvestigationRequest) => {
+    const runInvestigation = async (demoRun: boolean, override?: InvestigationRequest) => {
         setRunning(true);
+        setIsDemo(demoRun);
         setError(null);
         setResult(null);
         setInputsExpanded(false);
@@ -296,33 +296,24 @@ const InvestigationPage: React.FC = () => {
                     user: user || undefined,
                     alert_name: alertName || undefined,
                     time_range: timeRange || undefined,
-                    demo: isDemo,
+                    demo: demoRun,
                 };
-            const start = await apiClient.startInvestigation(req).catch((startErr) => {
-                if (isDemo) {return null;}
-                throw startErr;
+            // Demo and live both go through /start + SSE — demo is a paced backend
+            // replay, so it exercises the same path (no separate frontend fixture).
+            const start = await apiClient.startInvestigation(req);
+            setResult({
+                id: start.id,
+                status: 'running',
+                owner: start.owner,
+                started_at: start.started_at,
+                agent_order: [],
+                agents: {},
             });
 
-            if (start) {
-                setResult({
-                    id: start.id,
-                    status: 'running',
-                    owner: start.owner,
-                    started_at: start.started_at,
-                    agent_order: [],
-                    agents: {},
-                });
-
-                try {
-                    await streamInvestigation(start.id, start.stream_token);
-                } catch {
-                    await pollInvestigation(start.id);
-                }
-            } else {
-                const investigationResult = await apiClient
-                    .runInvestigation(req)
-                    .catch(() => DEMO_RESULT);
-                setResult(investigationResult);
+            try {
+                await streamInvestigation(start.id, start.stream_token);
+            } catch {
+                await pollInvestigation(start.id);
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Investigation failed. Check backend connection.');
@@ -337,6 +328,7 @@ const InvestigationPage: React.FC = () => {
         searchPollersRef.current.clear();
         setResult(null);
         setError(null);
+        setIsDemo(false);
         setInputsExpanded(true);
     };
 
@@ -406,7 +398,7 @@ const InvestigationPage: React.FC = () => {
                             onClick={() => runInvestigation(false)}
                         />
                         <Button
-                            label="Load Suspicious PowerShell Demo"
+                            label="Run Demo Investigation"
                             appearance="secondary"
                             disabled={running}
                             onClick={() => {
@@ -449,6 +441,7 @@ const InvestigationPage: React.FC = () => {
                 descriptors={descriptors}
                 result={result}
                 running={running}
+                isDemo={isDemo}
                 onClear={clearInvestigation}
             />
         </div>
