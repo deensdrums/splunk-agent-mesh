@@ -36,6 +36,7 @@ from .events import (
     VIZ_HINT_MAP,
     parse_and_validate,
 )
+from .subagent_runner import SearchOptimizationResult, SubagentRunner
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ class AgenticLLMAgent:
         # Delegated internal capabilities (e.g. the reporting agent), keyed by
         # their configured id. Never surfaced to the UI as peers.
         self.subagents = subagents or {}
+        self.subagent_runner = SubagentRunner(llm, self.subagents)
 
     def run(
         self,
@@ -120,6 +122,7 @@ class AgenticLLMAgent:
         model_used = self.config.model
         iteration_count = 0
         terminated_cleanly = False  # True once the model emits a terminal (non-action) turn
+        invoked_subagents: set[str] = set()
 
         for iteration in range(self.config.max_iterations):
             logger.info(
@@ -182,7 +185,8 @@ class AgenticLLMAgent:
                         progress_callback, all_events, [artifact_update], model_used, started, iteration_count,
                     )
 
-                result_payload, artifact = self._execute_search(last_event, earliest, _search_progress)
+                optimization = self.subagent_runner.optimize_search(last_event, all_events, request)
+                result_payload, artifact = self._execute_search(last_event, earliest, _search_progress, optimization)
                 if artifact:
                     iteration_artifacts.append(artifact)
                     all_artifacts.append(artifact)
@@ -197,7 +201,9 @@ class AgenticLLMAgent:
                 self._emit_progress(
                     progress_callback, all_events, [], model_used, started, iteration_count, phase="delegating",
                 )
-                handoff_result = self._invoke_subagent(last_event, all_events)
+                handoff_result, subagent_id = self._invoke_subagent(last_event, all_events)
+                if subagent_id:
+                    invoked_subagents.add(subagent_id)
                 messages.append(Message(role="assistant", content=response.content))
                 messages.append(Message(role="user", content=handoff_result))
 
@@ -231,6 +237,17 @@ class AgenticLLMAgent:
             all_events.append(self._synthetic_final())
             iteration_count += 1
             self._emit_progress(progress_callback, all_events, [], model_used, started, iteration_count)
+
+        if all_events:
+            subagent_events = self.subagent_runner.run_after_final(
+                request, all_events, all_artifacts, invoked_subagents,
+            )
+            if subagent_events:
+                all_events = _insert_before_final(all_events, subagent_events)
+                iteration_count += 1
+                self._emit_progress(
+                    progress_callback, all_events, [], model_used, started, iteration_count, phase="post_processing",
+                )
 
         output = {
             "agent_id": self.config.id,
@@ -339,10 +356,17 @@ class AgenticLLMAgent:
         event: dict,
         default_earliest: str,
         progress_callback: Callable[[dict], None] | None = None,
+        optimization: SearchOptimizationResult | None = None,
     ) -> tuple[dict, dict | None]:
         """Execute a splunk_search event's payload. Returns (llm_result, artifact)."""
         payload = event.get("payload", {})
-        spl = payload.get("query", "")
+        requested_spl = str(payload.get("query", ""))
+        optimization = optimization or SearchOptimizationResult(
+            requested_query=requested_spl,
+            executed_query=requested_spl,
+            metadata={"applied": False, "reason": "optimizer_not_run"},
+        )
+        spl = optimization.executed_query
         title = event.get("title") or "Search"
         earliest = payload.get("earliest", default_earliest)
         latest = payload.get("latest", "now")
@@ -364,9 +388,15 @@ class AgenticLLMAgent:
         )
 
         rows = artifact.get("rows", [])
+        artifact["requested_spl"] = optimization.requested_query
+        artifact["executed_spl"] = optimization.executed_query
+        artifact["optimization"] = optimization.metadata
         truncated_rows, total_count = _truncate_rows(rows)
         llm_result: dict = {
             "status": artifact.get("status"),
+            "requested_query": optimization.requested_query,
+            "executed_query": optimization.executed_query,
+            "optimization": optimization.metadata,
             "fields": artifact.get("fields", []),
             "rows": truncated_rows,
             "row_count": total_count,
@@ -378,7 +408,7 @@ class AgenticLLMAgent:
             llm_result["note"] = f"Showing {len(truncated_rows)} of {total_count} total rows."
         return llm_result, artifact
 
-    def _invoke_subagent(self, event: dict, events_so_far: list[dict]) -> str:
+    def _invoke_subagent(self, event: dict, events_so_far: list[dict]) -> tuple[str, str | None]:
         """Run a delegated sub-agent (e.g. reporting) and return text to feed back.
 
         The sub-agent's output never reaches the UI directly — it is returned
@@ -388,51 +418,7 @@ class AgenticLLMAgent:
         payload = event.get("payload", {})
         requested = payload.get("sub_agent", "")
         task = payload.get("task", "summarize_findings")
-        subagent = self._resolve_subagent(requested)
-
-        if subagent is None:
-            logger.warning("Agent %s: no sub-agent available for handoff %r.", self.config.id, requested)
-            return (
-                "No reporting sub-agent is available. Produce the final answer yourself "
-                "as a `final` event. Remember to always respond with json."
-            )
-
-        context = (
-            f"You are supporting the threat hunter. Task: {task}.\n\n"
-            f"Investigation events so far:\n{_events_to_markdown(events_so_far)}"
-        )
-        try:
-            response = self.llm.complete(
-                messages=[
-                    Message(role="system", content=subagent.system_prompt),
-                    Message(role="user", content=context),
-                ],
-                model=subagent.model,
-                temperature=subagent.temperature,
-                max_tokens=subagent.max_tokens,
-            )
-            report = response.content
-        except Exception as exc:
-            logger.exception("Sub-agent %s failed during handoff.", subagent.id)
-            return (
-                f"The reporting sub-agent failed: {exc}. Produce the final answer yourself "
-                "as a `final` event. Remember to always respond with json."
-            )
-
-        return (
-            f"The reporting sub-agent ({subagent.id}) returned the following report:\n\n"
-            f"{report}\n\n"
-            "Summarize this for the user using a `result_summary` event and then a `final` event. "
-            "Remember to always respond with json."
-        )
-
-    def _resolve_subagent(self, requested: str) -> AgentConfig | None:
-        """Resolve a handoff target. Exact id match, else the sole sub-agent."""
-        if requested and requested in self.subagents:
-            return self.subagents[requested]
-        if len(self.subagents) == 1:
-            return next(iter(self.subagents.values()))
-        return None
+        return self.subagent_runner.handoff(str(requested), str(task), events_so_far)
 
     def _error_output(self, started: str, error: str) -> dict:
         return {
@@ -446,3 +432,10 @@ class AgenticLLMAgent:
             "completed_at": now_iso(),
             "error": error,
         }
+
+
+def _insert_before_final(events: list[dict], additions: list[dict]) -> list[dict]:
+    for index in range(len(events) - 1, -1, -1):
+        if events[index].get("type") == "final":
+            return [*events[:index], *additions, *events[index:]]
+    return [*events, *additions]

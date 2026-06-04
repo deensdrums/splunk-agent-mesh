@@ -106,7 +106,11 @@ class FakeLLM:
 
 
 class FakeSplunk:
+    def __init__(self):
+        self.searches: list[dict] = []
+
     def run_search(self, spl, earliest="-24h", latest="now", **kwargs):
+        self.searches.append({"spl": spl, "earliest": earliest, "latest": latest, "kwargs": kwargs})
         return SearchResult(
             spl=spl,
             sid="sid-1",
@@ -305,3 +309,119 @@ def test_search_turn_emits_interpreting_phase():
     agent = AgenticLLMAgent(_config(), llm, lambda: FakeSplunk())
 
     assert "interpreting" in _captured_phases(agent)
+
+
+def test_search_optimizer_runs_before_splunk_search_and_context_keeps_both_queries():
+    search = _envelope(
+        {"type": "splunk_search", "title": "Auth", "text": "checking",
+         "payload": {"query": "index=auth action=failure | stats count by user", "type": "table"}},
+    )
+    optimizer = json.dumps({
+        "optimized_query": "index=auth action=failure user=* | stats count by user",
+        "changes": ["Added user=* to constrain the stats input to populated user values."],
+        "semantic_equivalence": "equivalent",
+        "risk": "low",
+        "warnings": [],
+    })
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    llm = FakeLLM([search, optimizer, final])
+    splunk = FakeSplunk()
+    search_optimizer = _config(
+        id="search_optimizer",
+        agent_role="subagent",
+        subagent_kind="search_optimizer",
+        invoke_policy="before_search",
+        output_contract="json",
+    )
+
+    agent = AgenticLLMAgent(_config(), llm, lambda: splunk, {"search_optimizer": search_optimizer})
+    _, artifacts = agent.run({"description": "investigate auth"})
+
+    assert splunk.searches[0]["spl"] == "index=auth action=failure user=* | stats count by user"
+    assert artifacts[0]["requested_spl"] == "index=auth action=failure | stats count by user"
+    assert artifacts[0]["executed_spl"] == "index=auth action=failure user=* | stats count by user"
+    assert artifacts[0]["optimization"]["applied"] is True
+    result_messages = [m.content for m in llm.calls[2] if m.role == "user" and "splunk_search_result" in m.content]
+    result_payload = json.loads(result_messages[-1])["splunk_search_result"]
+    assert result_payload["requested_query"] == "index=auth action=failure | stats count by user"
+    assert result_payload["executed_query"] == "index=auth action=failure user=* | stats count by user"
+
+
+def test_search_optimizer_rejects_unsafe_query_and_runs_original_search():
+    search = _envelope(
+        {"type": "splunk_search", "title": "Auth", "text": "checking",
+         "payload": {"query": "index=auth action=failure | stats count", "type": "single"}},
+    )
+    unsafe_optimizer = json.dumps({
+        "optimized_query": "index=auth action=failure | delete",
+        "changes": ["bad"],
+        "semantic_equivalence": "equivalent",
+        "risk": "low",
+        "warnings": ["contains destructive command"],
+    })
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    llm = FakeLLM([search, unsafe_optimizer, final])
+    splunk = FakeSplunk()
+    search_optimizer = _config(
+        id="search_optimizer",
+        agent_role="subagent",
+        subagent_kind="search_optimizer",
+        invoke_policy="before_search",
+        output_contract="json",
+    )
+
+    agent = AgenticLLMAgent(_config(), llm, lambda: splunk, {"search_optimizer": search_optimizer})
+    _, artifacts = agent.run({"description": "investigate auth"})
+
+    assert splunk.searches[0]["spl"] == "index=auth action=failure | stats count"
+    assert artifacts[0]["optimization"]["applied"] is False
+    assert artifacts[0]["optimization"]["reason"] == "optimizer_rejected"
+    assert artifacts[0]["optimization"]["proposed_query"] == "index=auth action=failure | delete"
+
+
+def test_after_final_reporting_subagent_runs_without_handoff():
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    llm = FakeLLM([final, "## Executive summary\nNo confirmed compromise."])
+    reporting = _config(
+        id="executive_brief",
+        agent_role="subagent",
+        subagent_kind="report",
+        invoke_policy="after_final",
+    )
+
+    agent = AgenticLLMAgent(_config(), llm, lambda: None, {"executive_brief": reporting})
+    output, _ = agent.run({"description": "x"})
+
+    assert [e["type"] for e in output["events"]] == ["result_summary", "final"]
+    assert output["events"][0]["payload"]["subagent_id"] == "executive_brief"
+    assert len(llm.calls) == 2
+
+
+def test_after_final_labeler_emits_structured_finding():
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    label = json.dumps({
+        "label": "false_positive",
+        "confidence": 0.82,
+        "severity": "low",
+        "rubric_scores": {"malicious_evidence": 1, "benign_explanation": 4},
+        "rationale": "The observed activity matches expected administrative behavior.",
+        "counter_evidence": ["No lateral movement or suspicious process activity was found."],
+        "recommended_disposition": "Close as false positive after analyst review.",
+    })
+    llm = FakeLLM([final, label])
+    labeler = _config(
+        id="event_labeler",
+        agent_role="subagent",
+        subagent_kind="labeler",
+        invoke_policy="after_final",
+        output_contract="json",
+    )
+
+    agent = AgenticLLMAgent(_config(), llm, lambda: None, {"event_labeler": labeler})
+    output, _ = agent.run({"description": "x"})
+
+    assert [e["type"] for e in output["events"]] == ["finding", "final"]
+    finding = output["events"][0]
+    assert finding["payload"]["subagent_id"] == "event_labeler"
+    assert finding["payload"]["label"] == "false_positive"
+    assert finding["payload"]["confidence"] == 0.82
