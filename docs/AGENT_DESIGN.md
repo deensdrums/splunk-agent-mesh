@@ -38,6 +38,11 @@ system_prompt = You are the Threat Hunter ... respond with VALID JSON ONLY ...
 | `enabled` | no | bool | 1 | Disabled stanzas are excluded entirely. |
 | `agent_mode` | no | string | single_shot | Set `agentic` for a primary agent (the harness event loop). `single_shot` is just the default label sub-agents carry; there is no single-shot execution path. |
 | `agent_role` | no | string | primary | `primary` (user-visible, must be `agentic`) or `subagent` (delegated via handoff). |
+| `subagent_kind` | no | string | generic | Internal capability type: `generic`, `report`, `labeler`, or `search_optimizer`. |
+| `invoke_policy` | no | string | on_handoff | When to invoke a subagent: `on_handoff`, `before_search`, `after_final`, or `disabled`. |
+| `output_contract` | no | string | markdown | Expected subagent response shape: `markdown` or `json`. |
+| `required` | no | bool | 0 | Required subagents emit a failure finding if they fail. |
+| `failure_policy` | no | string | continue | Failure behavior: `continue`, `warn`, or `fail_run`. |
 | `max_iterations` | no | int | 10 | Safety cap on agentic loop turns. |
 | `model` | no | string | (default) | LLM model identifier. |
 | `temperature` | no | float | (default) | Sampling temperature. |
@@ -107,10 +112,15 @@ top-level value is an object with a non-empty `events` array; each event is:
 - Emit **at most one action event** (`splunk_search` or `handoff`) per response,
   and make it the **last** event.
 - To run a search: end with a `splunk_search` event. The harness executes it,
-  appends the results, and calls the agent again to interpret them.
+  optionally optimizes it through a `search_optimizer` subagent, appends the
+  results with both `requested_query` and `executed_query`, and calls the agent
+  again to interpret them.
 - To produce a report: end with a `handoff` event (`sub_agent =
   executive_brief`). The harness runs the reporting sub-agent and returns its
   output; the agent then emits a `result_summary` and a `final`.
+- Subagents with `invoke_policy = after_final` run deterministically after the
+  Threat Hunter emits `final`; their generated events are inserted before the
+  final event in the returned stream.
 - Finish with a `final` event and request no further action.
 - On `"Remember to always respond with json."`, resend as valid JSON.
 
@@ -135,14 +145,34 @@ stream above. Prompted to use common Splunk indexes (`main`, `endpoint`, `dns`,
 `auth`, `proxy`, `firewall`, `web`, `os`, `sysmon`) and real CIM field names,
 and to broaden or pivot when a search returns nothing.
 
+### `agent:search_optimizer` — "Search Optimizer" (subagent)
+
+**Role**: safely rewrites SPL before execution when it can preserve the
+investigation intent, output shape, and key constraints.
+
+Invoked by the harness with `invoke_policy = before_search`. The harness rejects
+unsafe or semantically changed optimizations and executes the original SPL
+instead. Search results passed back to the Threat Hunter include both the
+requested and executed query.
+
 ### `agent:executive_brief` — "Reporting" (subagent)
 
 **Role**: turns the investigation's findings into a concise leadership report
 (executive summary, severity, confidence, MITRE ATT&CK, next steps).
 
-Invoked **only** via a Threat Hunter `handoff`. Its markdown output is fed back
-to the Threat Hunter, which summarizes it through `result_summary` + `final`. It
-never appears in the UI as a peer agent.
+Invoked after the Threat Hunter finalizes (`invoke_policy = after_final`) or by
+explicit handoff when configured that way. Its markdown output becomes a
+harness-authored `result_summary` event. It never appears in the UI as a peer
+agent.
+
+### `agent:event_labeler` — "Event Labeler" (subagent)
+
+**Role**: classifies the completed investigation as true positive, false
+positive, benign true positive, needs review, or insufficient evidence.
+
+Invoked after final with a strict JSON contract and conservative rubric. Its
+validated result becomes a harness-authored `finding` event before the final
+event.
 
 ### Retired personas
 
@@ -163,8 +193,9 @@ visible agent.
 2. To add a user-visible agentic agent, set `agent_mode = agentic`,
    `agent_role = primary`, `skills = splunk_search`, and a system prompt that
    enforces the event contract above.
-3. To add a delegated capability, set `agent_role = subagent` and reference it
-   from a primary agent's `handoff` payload (`sub_agent = <id>`).
+3. To add a delegated capability, set `agent_role = subagent`, choose
+   `subagent_kind`, and choose `invoke_policy`. Use `on_handoff` only for
+   capabilities the primary agent should request explicitly.
 4. Reload conf (Splunk Web: **Settings → Server controls → Restart**, or
    `splunk reload deploy-server`).
 
