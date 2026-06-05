@@ -425,3 +425,59 @@ def test_after_final_labeler_emits_structured_finding():
     assert finding["payload"]["subagent_id"] == "event_labeler"
     assert finding["payload"]["label"] == "false_positive"
     assert finding["payload"]["confidence"] == 0.82
+
+
+def test_after_final_labeler_accepts_fenced_json_response():
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    label = json.dumps({
+        "label": "needs_review",
+        "confidence": 0.71,
+        "severity": "medium",
+        "rubric_scores": {"suspicious_evidence": 3, "benign_explanation": 1},
+        "rationale": "The available evidence requires analyst review.",
+        "counter_evidence": ["No successful follow-on activity was observed."],
+        "recommended_disposition": "Review account owner and source context.",
+    })
+    llm = FakeLLM([final, f"```json\n{label}\n```"])
+    labeler = _config(
+        id="event_labeler",
+        agent_role="subagent",
+        subagent_kind="labeler",
+        invoke_policy="after_final",
+        output_contract="json",
+    )
+
+    agent = AgenticLLMAgent(_config(), llm, lambda: None, {"event_labeler": labeler})
+    output, _ = agent.run({"description": "x"})
+
+    assert [e["type"] for e in output["events"]] == ["finding", "final"]
+    assert output["events"][0]["payload"]["label"] == "needs_review"
+
+
+def test_after_final_labeler_retries_after_invalid_json():
+    final = _envelope({"type": "final", "title": "Done", "text": "summary", "payload": {}})
+    label = json.dumps({
+        "label": "insufficient_evidence",
+        "confidence": 0.9,
+        "severity": "unknown",
+        "rubric_scores": {"data_quality": 1},
+        "rationale": "The run lacks enough telemetry to classify the alert.",
+        "counter_evidence": [],
+        "recommended_disposition": "Improve telemetry and rerun the investigation.",
+    })
+    llm = FakeLLM([final, "Here is my classification:", label])
+    labeler = _config(
+        id="event_labeler",
+        agent_role="subagent",
+        subagent_kind="labeler",
+        invoke_policy="after_final",
+        output_contract="json",
+    )
+
+    agent = AgenticLLMAgent(_config(), llm, lambda: None, {"event_labeler": labeler})
+    output, _ = agent.run({"description": "x"})
+
+    assert [e["type"] for e in output["events"]] == ["finding", "final"]
+    assert output["events"][0]["payload"]["label"] == "insufficient_evidence"
+    assert len(llm.calls) == 3
+    assert any("previous response was not valid JSON" in m.content for m in llm.calls[2] if m.role == "user")
