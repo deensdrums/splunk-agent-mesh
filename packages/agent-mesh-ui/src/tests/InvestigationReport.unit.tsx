@@ -37,6 +37,27 @@ const EVENT_TWO: AgentEvent = {
     payload: { confidence: 'high' },
 };
 
+const LABEL_FINDING_EVENT: AgentEvent = {
+    type: 'finding',
+    title: 'Investigation label: needs review',
+    text: 'There are repeated failures but not enough context to prove compromise.',
+    payload: {
+        source: 'subagent',
+        subagent_id: 'event_labeler',
+        kind: 'labeler',
+        label: 'needs_review',
+        confidence: 0.71,
+        severity: 'medium',
+        rubric_scores: {
+            suspicious_evidence: 3,
+            benign_context: 1,
+        },
+        rationale: 'Repeated authentication failures require analyst review.',
+        counter_evidence: ['No successful follow-on activity in sampled rows.'],
+        recommended_disposition: 'Review source IP and account owner context.',
+    },
+};
+
 const FINAL_EVENT: AgentEvent = {
     type: 'final',
     title: 'Investigation complete',
@@ -248,6 +269,35 @@ describe('InvestigationReport console', () => {
         expect(within(scrollArea).getAllByText('index=endpoint process_name=powershell.exe | timechart count')).toHaveLength(1);
         expect(within(scrollArea).getByText('Column')).toBeInTheDocument();
         expect(within(scrollArea).getByText('timechart · done · SID test-sid')).toBeInTheDocument();
+    });
+
+    test('renders labeler findings as investigation classifications', () => {
+        render(<InvestigationReport descriptors={[]} result={resultWithEvents([LABEL_FINDING_EVENT])} running />);
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        const labelFinding = screen.getByTestId('label-finding');
+        expect(within(labelFinding).getByText('Needs Review')).toBeInTheDocument();
+        expect(within(labelFinding).getByText('Severity: Medium')).toBeInTheDocument();
+        expect(within(labelFinding).getByText('71% confidence')).toBeInTheDocument();
+        expect(within(labelFinding).getByText('Repeated authentication failures require analyst review.')).toBeInTheDocument();
+        expect(within(labelFinding).getByText('Review source IP and account owner context.')).toBeInTheDocument();
+        expect(within(labelFinding).getByText('No successful follow-on activity in sampled rows.')).toBeInTheDocument();
+        expect(within(labelFinding).getByText('suspicious_evidence')).toBeInTheDocument();
+        expect(within(labelFinding).getByText('3')).toBeInTheDocument();
+        expect(within(labelFinding).queryByText('event_labeler')).not.toBeInTheDocument();
+    });
+
+    test('keeps normal findings on the generic payload renderer', () => {
+        render(<InvestigationReport descriptors={[]} result={resultWithEvents([EVENT_TWO])} running />);
+        act(() => {
+            jest.advanceTimersByTime(330);
+        });
+
+        expect(screen.queryByTestId('label-finding')).not.toBeInTheDocument();
+        expect(screen.getByText('confidence')).toBeInTheDocument();
+        expect(screen.getByText('high')).toBeInTheDocument();
     });
 
     test('renders preview chart with a running indicator before search completion', () => {

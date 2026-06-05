@@ -84,6 +84,53 @@ const PayloadList = styled.dl`
     }
 `;
 
+const LabelPanel = styled.div<{ tone: string }>`
+    margin-top: ${variables.spacingSmall};
+    padding: ${variables.spacingSmall};
+    background: ${variables.backgroundColorSidebar};
+    border-left: 3px solid ${({ tone }) => tone};
+`;
+
+const LabelHeader = styled.div`
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: ${variables.spacingSmall};
+    margin-bottom: ${variables.spacingXSmall};
+`;
+
+const LabelBadge = styled.span<{ tone: string }>`
+    display: inline-flex;
+    align-items: center;
+    color: ${({ tone }) => tone};
+    font-size: ${variables.fontSizeSmall};
+    font-weight: ${variables.fontWeightSemiBold};
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+`;
+
+const LabelMeta = styled.span`
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
+`;
+
+const LabelSection = styled.div`
+    margin-top: ${variables.spacingSmall};
+`;
+
+const LabelSectionTitle = styled.div`
+    color: ${variables.contentColorMuted};
+    font-size: ${variables.fontSizeSmall};
+    font-weight: ${variables.fontWeightSemiBold};
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+`;
+
+const CompactList = styled.ul`
+    margin: ${variables.spacingXSmall} 0 0;
+    padding-left: 1.4em;
+`;
+
 const ActionsList = styled.ol`
     margin: ${variables.spacingSmall} 0 0;
     padding-left: 1.4em;
@@ -113,6 +160,39 @@ function isScalar(value: unknown): value is string | number | boolean {
     return ['string', 'number', 'boolean'].includes(typeof value);
 }
 
+function isLabelerFinding(event: AgentEvent, payload: Record<string, unknown>): boolean {
+    return event.type === 'finding' && payload.source === 'subagent' && payload.kind === 'labeler';
+}
+
+function titleCase(value: unknown): string {
+    return String(value || '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function formatConfidence(value: unknown): string | null {
+    if (typeof value !== 'number') {
+        return isScalar(value) ? String(value) : null;
+    }
+    const percent = value <= 1 ? value * 100 : value;
+    return `${Math.round(percent)}% confidence`;
+}
+
+function labelTone(label: unknown, severity: unknown): string {
+    const normalizedLabel = String(label || '').toLowerCase();
+    const normalizedSeverity = String(severity || '').toLowerCase();
+    if (normalizedLabel === 'true_positive' || ['high', 'critical'].includes(normalizedSeverity)) {
+        return '#d6563c';
+    }
+    if (normalizedLabel === 'false_positive' || normalizedLabel === 'benign_true_positive') {
+        return '#1a8a4a';
+    }
+    if (normalizedLabel === 'needs_review' || normalizedSeverity === 'medium') {
+        return '#c77919';
+    }
+    return '#5c6b77';
+}
+
 const PayloadFields: React.FC<{ payload: Record<string, unknown>; skip?: string[] }> = ({ payload, skip = [] }) => {
     const entries = Object.entries(payload).filter(([key, value]) => !skip.includes(key) && isScalar(value));
     if (entries.length === 0) {
@@ -130,9 +210,63 @@ const PayloadFields: React.FC<{ payload: Record<string, unknown>; skip?: string[
     );
 };
 
+const LabelFinding: React.FC<{ payload: Record<string, unknown> }> = ({ payload }) => {
+    const tone = labelTone(payload.label, payload.severity);
+    const confidence = formatConfidence(payload.confidence);
+    const counterEvidence = Array.isArray(payload.counter_evidence) ? payload.counter_evidence : [];
+    const rubricScores = payload.rubric_scores && typeof payload.rubric_scores === 'object'
+        ? Object.entries(payload.rubric_scores as Record<string, unknown>).filter(([, value]) => isScalar(value))
+        : [];
+
+    return (
+        <LabelPanel tone={tone} data-testid="label-finding">
+            <LabelHeader>
+                <LabelBadge tone={tone}>{titleCase(payload.label) || 'Unlabeled'}</LabelBadge>
+                {typeof payload.severity === 'string' && <LabelMeta>Severity: {titleCase(payload.severity)}</LabelMeta>}
+                {confidence && <LabelMeta>{confidence}</LabelMeta>}
+            </LabelHeader>
+
+            {typeof payload.rationale === 'string' && <EventText>{payload.rationale}</EventText>}
+
+            {typeof payload.recommended_disposition === 'string' && (
+                <LabelSection>
+                    <LabelSectionTitle>Recommended disposition</LabelSectionTitle>
+                    <EventText>{payload.recommended_disposition}</EventText>
+                </LabelSection>
+            )}
+
+            {counterEvidence.length > 0 && (
+                <LabelSection>
+                    <LabelSectionTitle>Counter-evidence</LabelSectionTitle>
+                    <CompactList>
+                        {counterEvidence.map((item) => (
+                            <li key={String(item)}>{String(item)}</li>
+                        ))}
+                    </CompactList>
+                </LabelSection>
+            )}
+
+            {rubricScores.length > 0 && (
+                <LabelSection>
+                    <LabelSectionTitle>Rubric scores</LabelSectionTitle>
+                    <PayloadList>
+                        {rubricScores.map(([key, value]) => (
+                            <React.Fragment key={key}>
+                                <dt>{key}</dt>
+                                <dd>{String(value)}</dd>
+                            </React.Fragment>
+                        ))}
+                    </PayloadList>
+                </LabelSection>
+            )}
+        </LabelPanel>
+    );
+};
+
 const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false }) => {
     const accent = TYPE_ACCENTS[event.type];
     const payload = event.payload || {};
+    const labelerFinding = isLabelerFinding(event, payload);
 
     return (
         <EventCard accent={accent} $isCurrent={isCurrent} data-testid="event-card">
@@ -154,7 +288,8 @@ const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false }) 
                 <ArtifactRenderer artifact={artifact} embedded />
             )}
 
-            {event.type === 'finding' && <PayloadFields payload={payload} />}
+            {labelerFinding && <LabelFinding payload={payload} />}
+            {event.type === 'finding' && !labelerFinding && <PayloadFields payload={payload} />}
 
             {event.type === 'final' && (
                 <>

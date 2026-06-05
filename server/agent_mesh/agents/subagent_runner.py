@@ -24,6 +24,26 @@ _SPL_DANGEROUS_RE = re.compile(
     r"\|\s*(delete|outputlookup|collect|script|sendemail|map|rest|dbxquery)\b",
     re.IGNORECASE,
 )
+_CODE_FENCE_RE = re.compile(r"^\s*```[a-zA-Z0-9]*\s*\n?(.*?)\n?```\s*$", re.DOTALL)
+
+_LABEL_JSON_TEMPLATE = {
+    "label": "needs_review",
+    "confidence": 0.0,
+    "severity": "unknown",
+    "rubric_scores": {
+        "malicious_evidence": 0,
+        "benign_explanation": 0,
+        "data_quality": 0,
+    },
+    "rationale": "One concise evidence-based rationale.",
+    "counter_evidence": [],
+    "recommended_disposition": "One concise disposition for the analyst.",
+}
+
+_LABEL_CORRECTIVE_MESSAGE = (
+    "Your previous response was not valid JSON for the required schema. "
+    "Return only one JSON object. Do not include Markdown, code fences, comments, or explanatory text."
+)
 
 
 class SearchOptimizationEnvelope(BaseModel):
@@ -213,6 +233,17 @@ class SubagentRunner:
     def _run_labeler(self, subagent: AgentConfig, request: dict, events: list[dict], artifacts: list[dict]) -> dict | None:
         prompt = {
             "task": "Classify the completed investigation using the configured rubric.",
+            "response_contract": {
+                "format": "json_object_only",
+                "exact_keys": list(_LABEL_JSON_TEMPLATE.keys()),
+                "template": _LABEL_JSON_TEMPLATE,
+                "rules": [
+                    "Return only one JSON object.",
+                    "Do not wrap the JSON in Markdown or code fences.",
+                    "Do not include explanatory text before or after the JSON object.",
+                    "Use confidence as a number from 0.0 to 1.0.",
+                ],
+            },
             "request": request,
             "events": events,
             "artifacts": _artifact_summaries(artifacts),
@@ -224,19 +255,26 @@ class SubagentRunner:
                 "insufficient_evidence",
             ],
         }
+        messages = [
+            Message(role="system", content=subagent.system_prompt),
+            Message(role="user", content=json.dumps(prompt, default=str)),
+        ]
         try:
-            response = self.llm.complete(
-                messages=[
-                    Message(role="system", content=subagent.system_prompt),
-                    Message(role="user", content=json.dumps(prompt, default=str)),
-                ],
-                model=subagent.model,
-                temperature=subagent.temperature,
-                max_tokens=subagent.max_tokens,
-            )
-            label = LabelEnvelope.model_validate(json.loads(response.content))
-        except (json.JSONDecodeError, ValidationError, Exception) as exc:
-            logger.warning("Labeling sub-agent %s failed validation: %s", subagent.id, exc)
+            label = self._complete_label(subagent, messages)
+        except (json.JSONDecodeError, ValidationError, ValueError) as exc:
+            logger.warning("Labeling sub-agent %s failed validation; retrying once: %s", subagent.id, exc)
+            retry_messages = [
+                *messages,
+                Message(role="assistant", content=getattr(exc, "doc", "") or ""),
+                Message(role="user", content=_LABEL_CORRECTIVE_MESSAGE),
+            ]
+            try:
+                label = self._complete_label(subagent, retry_messages)
+            except (json.JSONDecodeError, ValidationError, ValueError, Exception) as retry_exc:
+                logger.warning("Labeling sub-agent %s failed validation after retry: %s", subagent.id, retry_exc)
+                return _failure_event(subagent, "Labeling failed", str(retry_exc))
+        except Exception as exc:
+            logger.exception("Labeling sub-agent %s failed.", subagent.id)
             return _failure_event(subagent, "Labeling failed", str(exc))
 
         return {
@@ -250,6 +288,15 @@ class SubagentRunner:
                 **label.model_dump(),
             },
         }
+
+    def _complete_label(self, subagent: AgentConfig, messages: list[Message]) -> LabelEnvelope:
+        response = self.llm.complete(
+            messages=messages,
+            model=subagent.model,
+            temperature=subagent.temperature,
+            max_tokens=subagent.max_tokens,
+        )
+        return LabelEnvelope.model_validate(_json_object_from_text(response.content))
 
     def _find(self, kind: str, policy: str) -> AgentConfig | None:
         for subagent in self.subagents.values():
@@ -300,6 +347,59 @@ def _events_to_markdown(events: list[dict]) -> str:
         text = event.get("text", "")
         parts.append(f"**{title}**\n\n{text}" if title else text)
     return "\n\n".join(p for p in parts if p)
+
+
+def _json_object_from_text(text: str) -> dict:
+    if not text or not text.strip():
+        raise ValueError("empty JSON response")
+
+    candidate = text.strip()
+    fence_match = _CODE_FENCE_RE.match(candidate)
+    if fence_match:
+        candidate = fence_match.group(1).strip()
+
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        # Request/response sub-agents sometimes add a short preface despite a
+        # strict prompt. Extract one balanced top-level object, then still let
+        # json.loads and Pydantic enforce the actual contract.
+        candidate = _extract_balanced_json_object(candidate)
+        parsed = json.loads(candidate)
+
+    if not isinstance(parsed, dict):
+        raise ValueError(f"expected JSON object, got {type(parsed).__name__}")
+    return parsed
+
+
+def _extract_balanced_json_object(text: str) -> str:
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("response did not contain a JSON object")
+
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+
+    raise ValueError("response contained an incomplete JSON object")
 
 
 def _artifact_summaries(artifacts: list[dict]) -> list[dict]:
