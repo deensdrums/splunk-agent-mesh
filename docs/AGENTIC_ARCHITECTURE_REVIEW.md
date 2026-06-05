@@ -54,8 +54,10 @@ for iteration in range(max_iterations):
 - **Validation at the boundary**: `parse_and_validate` enforces the schema,
   tolerates a single ```` ```json ```` fence, and routes a corrective retry on
   failure. Only validated events ever reach the UI.
-- **Handoff** runs the named sub-agent (`executive_brief`), feeds its markdown
-  back, and asks the Threat Hunter to summarize via `result_summary` + `final`.
+- **Sub-agent calls** are harness-managed request/response LLM calls. Handoff
+  still feeds a named subagent's markdown back to the Threat Hunter, while
+  lifecycle policies can invoke the search optimizer before search execution
+  and reporting/labeling subagents after final.
 - **Termination guarantee**: if `max_iterations` is hit with an action pending,
   the harness makes one finalize call; if that yields no terminal event, it
   appends a harness-authored `final` so the transcript never dangles.
@@ -64,8 +66,9 @@ for iteration in range(max_iterations):
 
 | Tool | Mechanism | Input | Output to LLM |
 |---|---|---|---|
-| `splunk_search` | `splunk_search` event → `run_splunk_search_artifact` | `query`, `purpose`, `type` (viz hint) | status, fields, **truncated** rows (≤20), `row_count`, `sid` |
+| `splunk_search` | `splunk_search` event → optional `search_optimizer` → `run_splunk_search_artifact` | `query`, `purpose`, `type` (viz hint) | status, requested/executed query, optimization metadata, fields, **truncated** rows (≤20), `row_count`, `sid` |
 | `handoff` | `handoff` event → sub-agent `complete()` | `sub_agent`, `task` | the sub-agent's report text |
+| `after_final` subagents | `invoke_policy = after_final` → sub-agent `complete()` | completed request, events, artifact summaries | harness-authored `result_summary` / `finding` events inserted before `final` |
 
 Full rows are stored in the artifact for the UI (fetched by the browser from
 Splunk Web), not sent to the LLM — the model reasons over a truncated sample.
@@ -98,7 +101,7 @@ against context bloat: truncate search rows to ~20 + counts, cap turns with
 
 - **Discovery tools** (index / sourcetype / field summaries) so the agent
   explores the environment instead of guessing field names.
-- **Search-optimizer sub-agent** invoked via `handoff` to validate/refine SPL
-  and the viz hint before an expensive search.
+- **Optimizer evaluation** to measure whether before-search rewrites improve
+  search cost/latency without changing analyst conclusions.
 - **Token-level streaming** within a turn (provider streaming API) for
   character-by-character rendering — independent of this loop.

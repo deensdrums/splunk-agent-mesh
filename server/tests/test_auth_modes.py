@@ -90,6 +90,38 @@ def test_rest_conf_reader_requires_explicit_mode_and_token(monkeypatch):
     assert isinstance(get_conf_reader(), SplunkRestConfReader)
 
 
+def test_file_conf_reader_parses_subagent_lifecycle_fields(tmp_path):
+    conf_path = tmp_path / "agents.conf"
+    conf_path.write_text(
+        """
+[default]
+model = fake-model
+
+[agent:search_optimizer]
+display_name = Search Optimizer
+system_prompt = Optimize SPL.
+agent_role = subagent
+subagent_kind = search_optimizer
+invoke_policy = before_search
+output_contract = json
+required = 1
+failure_policy = fail_run
+""".strip()
+    )
+
+    agents = FileConfReader([conf_path]).get_agents()
+
+    assert len(agents) == 1
+    agent = agents[0]
+    assert agent.id == "search_optimizer"
+    assert agent.agent_role == "subagent"
+    assert agent.subagent_kind == "search_optimizer"
+    assert agent.invoke_policy == "before_search"
+    assert agent.output_contract == "json"
+    assert agent.required is True
+    assert agent.failure_policy == "fail_run"
+
+
 def test_splunk_settings_store_preserves_upstream_auth_status(monkeypatch):
     monkeypatch.setattr(
         "agent_mesh.settings_store.httpx.post",

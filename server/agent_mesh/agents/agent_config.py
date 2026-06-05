@@ -22,3 +22,11 @@ class AgentConfig:
     # "subagent" agents are delegated internal capabilities (e.g. the
     # reporting agent) invoked only by a primary agent, never shown as a peer.
     agent_role: str = "primary"
+    # Sub-agent execution metadata. The harness can invoke sub-agents either
+    # because the primary model requested a handoff or because a configured
+    # lifecycle policy says the call should happen deterministically.
+    subagent_kind: str = "generic"
+    invoke_policy: str = "on_handoff"
+    output_contract: str = "markdown"
+    required: bool = False
+    failure_policy: str = "continue"

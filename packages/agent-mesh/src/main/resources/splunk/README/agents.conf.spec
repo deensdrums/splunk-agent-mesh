@@ -40,6 +40,51 @@ max_iterations = <integer>
 * cap to prevent runaway loops.
 * Default: 10.
 
+subagent_kind = <string>
+* Internal capability type for `agent_role = subagent` stanzas.
+* Supported values:
+*   generic - a delegated capability with no special lifecycle behavior.
+*   report - produces a user-facing investigation report event from completed
+*     investigation context.
+*   labeler - classifies the completed investigation using a strict JSON rubric.
+*   search_optimizer - rewrites SPL before execution when it can preserve
+*     investigation intent.
+* Default: generic.
+
+invoke_policy = <string>
+* Controls when a sub-agent is invoked by the harness.
+* Supported values:
+*   on_handoff - invoked only when the primary agent emits a handoff event.
+*   before_search - invoked before each splunk_search action. Intended for
+*     subagent_kind = search_optimizer.
+*   after_final - invoked after the primary agent produces its final event; the
+*     harness inserts generated events before the final event in the returned
+*     event stream.
+*   disabled - configured but never invoked.
+* Default: on_handoff.
+
+output_contract = <string>
+* Expected response shape for request/response sub-agent calls.
+* Supported values:
+*   markdown - freeform markdown/text response.
+*   json - strict JSON response validated by the harness for built-in subagent
+*     kinds such as labeler and search_optimizer.
+* Default: markdown.
+
+required = <boolean>
+* Whether a sub-agent failure should be treated as required work. Required
+* sub-agents emit a failure finding when they fail validation or execution.
+* Default: 0.
+
+failure_policy = <string>
+* Controls harness behavior when a sub-agent fails.
+* Supported values:
+*   continue - suppress the failed optional sub-agent output and continue.
+*   warn - reserved for future user-visible warning behavior; currently behaves
+*     like continue.
+*   fail_run - emit a failure finding for the failed sub-agent.
+* Default: continue.
+
 
 [agent:<id>]
 * One stanza per agent. The <id> portion is used as a stable identifier in the

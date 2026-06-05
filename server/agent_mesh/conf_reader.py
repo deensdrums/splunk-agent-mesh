@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 _STANZA_PREFIX = "agent:"
+_SUBAGENT_KINDS = {"generic", "report", "labeler", "search_optimizer"}
+_INVOKE_POLICIES = {"on_handoff", "before_search", "after_final", "disabled"}
+_OUTPUT_CONTRACTS = {"markdown", "json"}
+_FAILURE_POLICIES = {"continue", "warn", "fail_run"}
 
 
 def _coerce_bool(value: object, default: bool = True) -> bool:
@@ -47,6 +51,11 @@ def _coerce_list(value: object) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in str(value).split(",") if item.strip()]
+
+
+def _coerce_choice(value: object, allowed: set[str], default: str) -> str:
+    candidate = str(value or default).strip().lower()
+    return candidate if candidate in allowed else default
 
 
 def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig | None:
@@ -84,6 +93,11 @@ def _build_agent_config(stanza_id: str, merged: dict[str, str]) -> AgentConfig |
         agent_mode=agent_mode,
         max_iterations=_coerce_int(merged.get("max_iterations"), 10),
         agent_role=agent_role,
+        subagent_kind=_coerce_choice(merged.get("subagent_kind"), _SUBAGENT_KINDS, "generic"),
+        invoke_policy=_coerce_choice(merged.get("invoke_policy"), _INVOKE_POLICIES, "on_handoff"),
+        output_contract=_coerce_choice(merged.get("output_contract"), _OUTPUT_CONTRACTS, "markdown"),
+        required=_coerce_bool(merged.get("required"), False),
+        failure_policy=_coerce_choice(merged.get("failure_policy"), _FAILURE_POLICIES, "continue"),
     )
 
 
