@@ -147,6 +147,12 @@ const ScrollArea = styled.div`
 `;
 
 const ScrollContent = styled.div`
+    display: flex;
+    flex-direction: column;
+
+    /* Breathing room between event cards, on top of the card's own bottom
+       margin — keeps the transcript easy to scan. */
+    gap: ${variables.spacingSmall};
     width: 100%;
     box-sizing: border-box;
 `;
