@@ -279,8 +279,8 @@ stories:
   - BD-06
   - BD-07
   recommendation: Define before polish
-  status: Proposed
-  reviewer_notes: ''
+  status: Postponed
+  reviewer_notes: 'Postponed — not required for a functional demo/POC. Completed investigations restore cleanly from KV Store (STATE-002/STATE-004). Stream reconnect and orphan detection are production concerns that add complexity without improving the demo experience. Revisit when moving beyond single-user POC.'
 - order: 14
   story_id: DOC-001
   theme: Documentation
