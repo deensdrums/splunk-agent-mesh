@@ -257,8 +257,8 @@ stories:
   origin_thought_ids:
   - BD-07
   recommendation: Do after persistence API
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Implemented useInvestigationUrl hook that reads/writes the ?id= query parameter via pushState/replaceState and listens for popstate (back/forward). Wired into the console shell: selecting from the sidebar or starting a new investigation pushes a history entry with the investigation ID; browser back/forward navigates between sessions; Clear removes the ?id= parameter. Loading a URL with ?id=<guid> restores the corresponding session on mount via the existing GET /api/v1/investigations/{id} endpoint. Invalid or inaccessible IDs show an error message without breaking the console (existing 404/400 handling). Other Splunk query parameters (ns, prov, etc.) are preserved. Works in both Splunk Web and standalone dev modes. Covered by 7 new tests for the hook (initial read, set, clear, preserve params, popstate, replaceState mode); full suite passes (46 Jest, tsc, eslint clean).'
 
 - order: 13
   story_id: REL-001
