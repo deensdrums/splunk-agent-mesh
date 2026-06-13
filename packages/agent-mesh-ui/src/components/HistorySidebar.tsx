@@ -34,7 +34,8 @@ const ToggleButton = styled.button`
     justify-content: center;
     flex: 0 0 auto;
     width: 100%;
-    height: 36px;
+    box-sizing: border-box;
+    padding: ${variables.spacingSmall} ${variables.spacingMedium};
     border: none;
     border-bottom: 1px solid ${variables.borderColor};
     background: transparent;
@@ -51,6 +52,7 @@ const SidebarHeader = styled.div`
     display: flex;
     align-items: center;
     justify-content: space-between;
+    box-sizing: border-box;
     padding: ${variables.spacingSmall} ${variables.spacingSmall} ${variables.spacingSmall} ${variables.spacingMedium};
     border-bottom: 1px solid ${variables.borderColor};
     flex: 0 0 auto;
