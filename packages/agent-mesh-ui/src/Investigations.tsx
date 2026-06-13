@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@splunk/react-ui/Button';
 import Modal from '@splunk/react-ui/Modal';
 import {
@@ -15,6 +15,7 @@ import {
 import InvestigationPage, { ConsoleChromeState } from './pages/InvestigationPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
+import HistorySidebar from './components/HistorySidebar';
 
 type Overlay = 'settings' | 'about' | null;
 
@@ -24,6 +25,8 @@ const Investigations: React.FC = () => {
     const aboutButtonRef = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
     const [shellHeight, setShellHeight] = useState<number>();
     const [overlay, setOverlay] = useState<Overlay>(null);
+    const [loadInvestigationId, setLoadInvestigationId] = useState<string | null>(null);
+    const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
     const [consoleChrome, setConsoleChrome] = useState<ConsoleChromeState>({
         status: null,
         owner: null,
@@ -45,6 +48,15 @@ const Investigations: React.FC = () => {
     }, []);
 
     const closeOverlay = () => setOverlay(null);
+
+    const handleSidebarSelect = useCallback((investigationId: string) => {
+        setLoadInvestigationId(investigationId);
+    }, []);
+
+    const handleInvestigationStarted = useCallback(() => {
+        setSidebarRefreshKey((prev) => prev + 1);
+    }, []);
+
     const consoleMeta = [
         consoleChrome.status,
         consoleChrome.owner,
@@ -52,38 +64,49 @@ const Investigations: React.FC = () => {
     ].filter(Boolean).join(' · ');
 
     return (
-        <StyledAppContainer ref={containerRef} $height={shellHeight} data-testid="investigations-shell">
-            <StyledConsoleControls aria-label="Console controls">
-                <StyledConsoleTitleGroup>
-                    <StyledConsoleTitle>Investigation Console</StyledConsoleTitle>
-                    {consoleChrome.isDemo && <StyledConsoleMeta>Demo data</StyledConsoleMeta>}
-                    {consoleMeta && <StyledConsoleMeta>{consoleMeta}</StyledConsoleMeta>}
-                </StyledConsoleTitleGroup>
-                <StyledConsoleActions>
-                    {consoleChrome.canClear && (
-                        <Button label="Clear" appearance="subtle" onClick={() => consoleChrome.onClear?.()} />
-                    )}
-                    <Button
-                        appearance="secondary"
-                        elementRef={settingsButtonRef}
-                        icon={<span aria-hidden="true">⚙</span>}
-                        label="Settings"
-                        onClick={() => setOverlay('settings')}
-                    />
-                    <Button
-                        appearance="subtle"
-                        elementRef={aboutButtonRef}
-                        icon={<span aria-hidden="true">i</span>}
-                        label="About"
-                        onClick={() => setOverlay('about')}
-                    />
-                </StyledConsoleActions>
-            </StyledConsoleControls>
-            <StyledConsoleMain>
-                <StyledPanelFill>
-                    <InvestigationPage onConsoleChromeChange={setConsoleChrome} />
-                </StyledPanelFill>
-            </StyledConsoleMain>
+        <StyledAppContainer ref={containerRef} $height={shellHeight} data-testid="investigations-shell" style={{ flexDirection: 'row' }}>
+            <HistorySidebar
+                activeInvestigationId={consoleChrome.id}
+                onSelect={handleSidebarSelect}
+                refreshKey={sidebarRefreshKey}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0, overflow: 'hidden' }}>
+                <StyledConsoleControls aria-label="Console controls">
+                    <StyledConsoleTitleGroup>
+                        <StyledConsoleTitle>Investigation Console</StyledConsoleTitle>
+                        {consoleChrome.isDemo && <StyledConsoleMeta>Demo data</StyledConsoleMeta>}
+                        {consoleMeta && <StyledConsoleMeta>{consoleMeta}</StyledConsoleMeta>}
+                    </StyledConsoleTitleGroup>
+                    <StyledConsoleActions>
+                        {consoleChrome.canClear && (
+                            <Button label="Clear" appearance="subtle" onClick={() => consoleChrome.onClear?.()} />
+                        )}
+                        <Button
+                            appearance="secondary"
+                            elementRef={settingsButtonRef}
+                            icon={<span aria-hidden="true">⚙</span>}
+                            label="Settings"
+                            onClick={() => setOverlay('settings')}
+                        />
+                        <Button
+                            appearance="subtle"
+                            elementRef={aboutButtonRef}
+                            icon={<span aria-hidden="true">i</span>}
+                            label="About"
+                            onClick={() => setOverlay('about')}
+                        />
+                    </StyledConsoleActions>
+                </StyledConsoleControls>
+                <StyledConsoleMain>
+                    <StyledPanelFill>
+                        <InvestigationPage
+                            onConsoleChromeChange={setConsoleChrome}
+                            loadInvestigationId={loadInvestigationId}
+                            onInvestigationStarted={handleInvestigationStarted}
+                        />
+                    </StyledPanelFill>
+                </StyledConsoleMain>
+            </div>
             <Modal
                 divider="both"
                 initialFocus="container"

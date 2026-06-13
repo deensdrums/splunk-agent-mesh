@@ -21,6 +21,8 @@ export interface ConsoleChromeState {
 
 interface Props {
     onConsoleChromeChange?: (state: ConsoleChromeState) => void;
+    loadInvestigationId?: string | null;
+    onInvestigationStarted?: () => void;
 }
 
 const PageShell = styled.div`
@@ -136,7 +138,7 @@ export function upsertArtifacts(current: Artifact[], updates: Artifact[]): Artif
     return Array.from(byId.values());
 }
 
-const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
+const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange, loadInvestigationId, onInvestigationStarted }) => {
     const [description, setDescription] = useState('');
     const [host, setHost] = useState('');
     const [user, setUser] = useState('');
@@ -199,6 +201,43 @@ const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
             searchPollersRef.current.set(artifact.id, poller);
         });
     }, [result?.artifacts]);
+
+    const loadedIdRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!loadInvestigationId || loadInvestigationId === loadedIdRef.current) {
+            return;
+        }
+        if (loadInvestigationId === result?.id) {
+            loadedIdRef.current = loadInvestigationId;
+            return;
+        }
+        loadedIdRef.current = loadInvestigationId;
+
+        streamRef.current?.close();
+        searchPollersRef.current.forEach((poller) => poller.close());
+        searchPollersRef.current.clear();
+        setRunning(false);
+        setError(null);
+        setIsDemo(false);
+
+        apiClient
+            .getInvestigation(loadInvestigationId)
+            .then((loaded) => {
+                const req = (loaded as any).request || {};
+                setDescription(req.description || '');
+                setHost(req.host || '');
+                setUser(req.user || '');
+                setAlertName(req.alert_name || '');
+                setTimeRange(req.time_range || '-24h');
+                setIsDemo(Boolean(req.demo));
+                setInputsExpanded(false);
+                setResult(loaded);
+            })
+            .catch((err) => {
+                setError(err instanceof Error ? err.message : 'Failed to load investigation.');
+            });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadInvestigationId]);
 
     const loadDemoForm = () => {
         setDescription(DEMO_FORM.description!);
@@ -333,6 +372,7 @@ const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
             // Demo and live both go through /start + SSE — demo is a paced backend
             // replay, so it exercises the same path (no separate frontend fixture).
             const start = await apiClient.startInvestigation(req);
+            loadedIdRef.current = start.id;
             setResult({
                 id: start.id,
                 status: 'running',
@@ -341,6 +381,7 @@ const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange }) => {
                 agent_order: [],
                 agents: {},
             });
+            onInvestigationStarted?.();
 
             try {
                 await streamInvestigation(start.id, start.stream_token);

@@ -69,6 +69,7 @@ jest.mock('@splunk/visualizations/Pie', () => () => <div>Pie</div>);
 jest.mock('../services/apiClient', () => ({
     apiClient: {
         getAgents: jest.fn().mockResolvedValue({ agents: [] }),
+        listInvestigations: jest.fn().mockResolvedValue({ investigations: [] }),
         getSettings: jest.fn().mockResolvedValue({
             provider: 'anthropic',
             model: 'legacy-provider-model',
@@ -155,4 +156,15 @@ test('has a Start Investigation button', () => {
     if (btn) {
         expect(btn).toBeInTheDocument();
     }
+});
+
+test('renders a collapsed history sidebar toggle', () => {
+    render(<Investigations />);
+    expect(screen.getByRole('button', { name: 'Show investigation history' })).toBeInTheDocument();
+});
+
+test('sidebar does not introduce outer-page scrolling', () => {
+    render(<Investigations />);
+    const shell = screen.getByTestId('investigations-shell');
+    expect(shell).toBeInTheDocument();
 });

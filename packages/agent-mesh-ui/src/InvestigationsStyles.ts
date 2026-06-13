@@ -66,8 +66,9 @@ export const StyledConsoleActions = styled.div`
 export const StyledPanelFill = styled.div`
     display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
     min-height: 0;
-    width: 100%;
+    min-width: 0;
     overflow: hidden;
 `;
 

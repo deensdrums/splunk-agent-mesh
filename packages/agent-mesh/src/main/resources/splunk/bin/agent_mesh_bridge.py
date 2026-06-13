@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import traceback
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
 
+logger = logging.getLogger("agent_mesh_bridge")
 
 UVICORN_BASE_URL = os.environ.get("AGENT_MESH_UVICORN_URL", "http://127.0.0.1:8765").rstrip("/")
 
@@ -33,8 +36,9 @@ class AgentMeshBridge(PersistentServerConnectionApplication):
             if not path.startswith("api/v1/"):
                 return self._response(404, {"detail": "Unknown agent-mesh bridge path."})
 
-            query = incoming.get("query") or []
-            query_string = urlencode(query, doseq=True)
+            query = incoming.get("query")
+            logger.debug("Bridge query param type=%s value=%r", type(query).__name__, query)
+            query_string = self._encode_query(query)
             url = f"{UVICORN_BASE_URL}/{path}"
             if query_string:
                 url = f"{url}?{query_string}"
@@ -65,7 +69,28 @@ class AgentMeshBridge(PersistentServerConnectionApplication):
         except URLError:
             return self._response(502, {"detail": "Agent Mesh backend is unavailable."})
         except Exception:
+            logger.error("Bridge request failed: %s", traceback.format_exc())
             return self._response(500, {"detail": "Agent Mesh bridge request failed."})
+
+    @staticmethod
+    def _encode_query(query) -> str:
+        if not query:
+            return ""
+        if isinstance(query, dict):
+            return urlencode(query, doseq=True)
+        if isinstance(query, list):
+            pairs = []
+            for item in query:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    pairs.append((str(item[0]), str(item[1])))
+                elif isinstance(item, dict):
+                    pairs.extend((str(k), str(v)) for k, v in item.items())
+                else:
+                    pairs.append((str(item), ""))
+            return urlencode(pairs, doseq=True)
+        if isinstance(query, str):
+            return query
+        return ""
 
     @staticmethod
     def _decode(body: bytes):

@@ -236,8 +236,8 @@ stories:
   origin_thought_ids:
   - BD-05
   recommendation: Do after persistence API
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Implemented HistorySidebar component with collapsed rail (40px toggle icon) expanding to a 280px scrollable panel. Sidebar spans the full app container height, with its header border-bottom pixel-flush (49px explicit height) with the Investigation Console controls ribbon. List fetches from GET /api/v1/investigations on expand (fetch-on-open, no polling). Each item shows title, status dot, and relative timestamp; active investigation highlighted. Selecting a prior session loads the full record via the existing GET endpoint, populates the console with event timeline and artifacts, and fills the inline input summary with original request fields (expanded inputs show original query). Restored artifacts from durable records show "Results not available — run the search in Splunk" since rows are not persisted (Splunk is the source of truth). Sidebar refreshes after new investigation starts. Also fixed the Splunk REST bridge to handle all query parameter formats from PersistentServerConnectionApplication and added bridge error logging. Covered by 8 new frontend tests (sidebar toggle, expand/collapse, item list, onSelect, active highlight, empty state) plus 2 shell-level tests; full suite passes (39 Jest, tsc, eslint clean).'
 
 - order: 12
   story_id: STATE-004
