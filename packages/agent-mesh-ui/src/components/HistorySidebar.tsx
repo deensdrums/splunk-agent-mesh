@@ -28,14 +28,16 @@ const Rail = styled.div<{ $expanded: boolean }>`
     transition: flex-basis 150ms ease, width 150ms ease, min-width 150ms ease;
 `;
 
+const CONTROLS_HEIGHT = '49px';
+
 const ToggleButton = styled.button`
     display: flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
+    flex: 0 0 ${CONTROLS_HEIGHT};
     width: 100%;
+    height: ${CONTROLS_HEIGHT};
     box-sizing: border-box;
-    padding: ${variables.spacingSmall} ${variables.spacingMedium};
     border: none;
     border-bottom: 1px solid ${variables.borderColor};
     background: transparent;
@@ -53,9 +55,10 @@ const SidebarHeader = styled.div`
     align-items: center;
     justify-content: space-between;
     box-sizing: border-box;
-    padding: ${variables.spacingSmall} ${variables.spacingSmall} ${variables.spacingSmall} ${variables.spacingMedium};
+    height: ${CONTROLS_HEIGHT};
+    flex: 0 0 ${CONTROLS_HEIGHT};
+    padding: 0 ${variables.spacingSmall} 0 ${variables.spacingMedium};
     border-bottom: 1px solid ${variables.borderColor};
-    flex: 0 0 auto;
 `;
 
 const SidebarTitle = styled.div`
