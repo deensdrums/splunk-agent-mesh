@@ -281,7 +281,15 @@ const SearchArtifactBody: React.FC<{ artifact: SearchArtifact; includeSpl: boole
                     <WaitSpinner size="small" /> Search running. Preview results update automatically.
                 </SearchState>
             )}
-            {artifact.status === 'done' && (
+            {artifact.status === 'done' && artifact.rows.length > 0 && (
+                <SearchState $status={artifact.status}>Search complete. Showing final results.</SearchState>
+            )}
+            {artifact.status === 'done' && artifact.rows.length === 0 && artifact.sid && artifact.sid !== 'demo' && (
+                <SearchState $status={artifact.status}>
+                    Results not available &mdash; run the search in Splunk to view rows.
+                </SearchState>
+            )}
+            {artifact.status === 'done' && artifact.rows.length === 0 && (!artifact.sid || artifact.sid === 'demo') && (
                 <SearchState $status={artifact.status}>Search complete. Showing final results.</SearchState>
             )}
             {artifact.status === 'error' && (
