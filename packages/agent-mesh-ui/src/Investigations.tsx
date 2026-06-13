@@ -64,47 +64,49 @@ const Investigations: React.FC = () => {
     ].filter(Boolean).join(' · ');
 
     return (
-        <StyledAppContainer ref={containerRef} $height={shellHeight} data-testid="investigations-shell">
-            <StyledConsoleControls aria-label="Console controls">
-                <StyledConsoleTitleGroup>
-                    <StyledConsoleTitle>Investigation Console</StyledConsoleTitle>
-                    {consoleChrome.isDemo && <StyledConsoleMeta>Demo data</StyledConsoleMeta>}
-                    {consoleMeta && <StyledConsoleMeta>{consoleMeta}</StyledConsoleMeta>}
-                </StyledConsoleTitleGroup>
-                <StyledConsoleActions>
-                    {consoleChrome.canClear && (
-                        <Button label="Clear" appearance="subtle" onClick={() => consoleChrome.onClear?.()} />
-                    )}
-                    <Button
-                        appearance="secondary"
-                        elementRef={settingsButtonRef}
-                        icon={<span aria-hidden="true">⚙</span>}
-                        label="Settings"
-                        onClick={() => setOverlay('settings')}
-                    />
-                    <Button
-                        appearance="subtle"
-                        elementRef={aboutButtonRef}
-                        icon={<span aria-hidden="true">i</span>}
-                        label="About"
-                        onClick={() => setOverlay('about')}
-                    />
-                </StyledConsoleActions>
-            </StyledConsoleControls>
-            <StyledConsoleMain>
-                <HistorySidebar
-                    activeInvestigationId={consoleChrome.id}
-                    onSelect={handleSidebarSelect}
-                    refreshKey={sidebarRefreshKey}
-                />
-                <StyledPanelFill>
-                    <InvestigationPage
-                        onConsoleChromeChange={setConsoleChrome}
-                        loadInvestigationId={loadInvestigationId}
-                        onInvestigationStarted={handleInvestigationStarted}
-                    />
-                </StyledPanelFill>
-            </StyledConsoleMain>
+        <StyledAppContainer ref={containerRef} $height={shellHeight} data-testid="investigations-shell" style={{ flexDirection: 'row' }}>
+            <HistorySidebar
+                activeInvestigationId={consoleChrome.id}
+                onSelect={handleSidebarSelect}
+                refreshKey={sidebarRefreshKey}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minWidth: 0, overflow: 'hidden' }}>
+                <StyledConsoleControls aria-label="Console controls">
+                    <StyledConsoleTitleGroup>
+                        <StyledConsoleTitle>Investigation Console</StyledConsoleTitle>
+                        {consoleChrome.isDemo && <StyledConsoleMeta>Demo data</StyledConsoleMeta>}
+                        {consoleMeta && <StyledConsoleMeta>{consoleMeta}</StyledConsoleMeta>}
+                    </StyledConsoleTitleGroup>
+                    <StyledConsoleActions>
+                        {consoleChrome.canClear && (
+                            <Button label="Clear" appearance="subtle" onClick={() => consoleChrome.onClear?.()} />
+                        )}
+                        <Button
+                            appearance="secondary"
+                            elementRef={settingsButtonRef}
+                            icon={<span aria-hidden="true">⚙</span>}
+                            label="Settings"
+                            onClick={() => setOverlay('settings')}
+                        />
+                        <Button
+                            appearance="subtle"
+                            elementRef={aboutButtonRef}
+                            icon={<span aria-hidden="true">i</span>}
+                            label="About"
+                            onClick={() => setOverlay('about')}
+                        />
+                    </StyledConsoleActions>
+                </StyledConsoleControls>
+                <StyledConsoleMain>
+                    <StyledPanelFill>
+                        <InvestigationPage
+                            onConsoleChromeChange={setConsoleChrome}
+                            loadInvestigationId={loadInvestigationId}
+                            onInvestigationStarted={handleInvestigationStarted}
+                        />
+                    </StyledPanelFill>
+                </StyledConsoleMain>
+            </div>
             <Modal
                 divider="both"
                 initialFocus="container"
