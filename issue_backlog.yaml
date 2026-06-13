@@ -346,16 +346,18 @@ stories:
   dependencies: []
   origin_thought_ids: []
   recommendation: Do when polishing the demo transcript readability
-  status: Proposed
+  status: Done
   reviewer_notes: >-
-    Code review of EventRenderer.tsx (311 lines) confirms the structure.
-    splunk_search rendering is at lines 279-289: SplBlock (SPL query) +
-    PayloadFields (payload metadata excluding query) + ArtifactRenderer
-    (embedded viz). Finding rendering is at lines 291-292: PayloadFields for
-    regular findings, LabelFinding for labeler findings. LabelFinding (lines
-    213-263) has five subsections: label/severity/confidence header, rationale,
-    recommended_disposition, counter_evidence list, and rubric_scores table.
-    The first three should stay visible; the last two are detail. The
-    CollapsiblePanel component supports defaultOpen={false}, title (string or
-    ReactNode), and appearance="subtle". No state management needed — uncontrolled
-    mode with defaultOpen is sufficient.
+    Implemented in EventRenderer.tsx. Imported CollapsiblePanel from
+    @splunk/react-ui/CollapsiblePanel. Three collapsible regions added:
+    (1) splunk_search cards — SPL query block and PayloadFields wrapped in
+    CollapsiblePanel below the ArtifactRenderer; search explanation text and
+    visualization remain always visible. (2) Regular finding cards —
+    PayloadFields grid wrapped in CollapsiblePanel; finding title and
+    narrative remain visible. (3) Labeler finding cards — recommended
+    disposition, counter-evidence list, and rubric scores table wrapped in
+    CollapsiblePanel; label badge, severity, confidence, and rationale remain
+    visible. All panels use appearance="subtle" and defaultOpen={false} with
+    title "See details". TypeScript compiles clean. No new files, no backend
+    changes, no new dependencies. Node version on build machine (20.x) prevented
+    full build/test run — requires Node >= 22 to verify in browser.
