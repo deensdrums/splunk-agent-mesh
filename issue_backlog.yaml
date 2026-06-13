@@ -214,8 +214,8 @@ stories:
   - BD-05
   - BD-07
   recommendation: Do after persistence
-  status: Proposed
-  reviewer_notes: ''
+  status: Done
+  reviewer_notes: 'Added GET /api/v1/investigations listing endpoint that merges in-memory and durable KV Store records, deduplicates by ID (memory wins for active jobs), returns summary-only fields (no secrets, no rows) in reverse chronological order with a configurable limit (default 50, max 200). Ownership enforced via owner.username filter on KV Store query and client-side check; expired records filtered before return. Hardened all {investigation_id} endpoints (get, status, cancel, stream) with format validation returning 400 for malformed IDs; missing or wrong-owner IDs return 404 (no info leakage). Durable backend errors on list degrade gracefully to in-memory results. NullInvestigationRepository returns empty list for demo/dev mode; in-memory jobs still listed so demo mode has working history. Added list() to SplunkKVInvestigationRepository, InvestigationJobStore, list_summary() projection, and is_valid_investigation_id() security helper. Covered by 13 new tests in test_durable_investigations.py; full backend suite (63 tests) passes.'
 
 - order: 11
   story_id: UI-003
