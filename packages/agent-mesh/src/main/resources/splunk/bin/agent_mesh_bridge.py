@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import traceback
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from splunk.persistconn.application import PersistentServerConnectionApplication
 
+logger = logging.getLogger("agent_mesh_bridge")
 
 UVICORN_BASE_URL = os.environ.get("AGENT_MESH_UVICORN_URL", "http://127.0.0.1:8765").rstrip("/")
 
@@ -34,7 +37,12 @@ class AgentMeshBridge(PersistentServerConnectionApplication):
                 return self._response(404, {"detail": "Unknown agent-mesh bridge path."})
 
             query = incoming.get("query") or []
-            query_string = urlencode(query, doseq=True)
+            if isinstance(query, dict):
+                query_string = urlencode(query, doseq=True)
+            elif isinstance(query, list):
+                query_string = urlencode(query, doseq=True)
+            else:
+                query_string = ""
             url = f"{UVICORN_BASE_URL}/{path}"
             if query_string:
                 url = f"{url}?{query_string}"
@@ -65,6 +73,7 @@ class AgentMeshBridge(PersistentServerConnectionApplication):
         except URLError:
             return self._response(502, {"detail": "Agent Mesh backend is unavailable."})
         except Exception:
+            logger.error("Bridge request failed: %s", traceback.format_exc())
             return self._response(500, {"detail": "Agent Mesh bridge request failed."})
 
     @staticmethod
