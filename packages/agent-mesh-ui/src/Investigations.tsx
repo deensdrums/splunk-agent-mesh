@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Button from '@splunk/react-ui/Button';
 import Modal from '@splunk/react-ui/Modal';
 import {
@@ -15,6 +15,7 @@ import {
 import InvestigationPage, { ConsoleChromeState } from './pages/InvestigationPage';
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
+import HistorySidebar from './components/HistorySidebar';
 
 type Overlay = 'settings' | 'about' | null;
 
@@ -24,6 +25,8 @@ const Investigations: React.FC = () => {
     const aboutButtonRef = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
     const [shellHeight, setShellHeight] = useState<number>();
     const [overlay, setOverlay] = useState<Overlay>(null);
+    const [loadInvestigationId, setLoadInvestigationId] = useState<string | null>(null);
+    const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
     const [consoleChrome, setConsoleChrome] = useState<ConsoleChromeState>({
         status: null,
         owner: null,
@@ -45,6 +48,15 @@ const Investigations: React.FC = () => {
     }, []);
 
     const closeOverlay = () => setOverlay(null);
+
+    const handleSidebarSelect = useCallback((investigationId: string) => {
+        setLoadInvestigationId(investigationId);
+    }, []);
+
+    const handleInvestigationStarted = useCallback(() => {
+        setSidebarRefreshKey((prev) => prev + 1);
+    }, []);
+
     const consoleMeta = [
         consoleChrome.status,
         consoleChrome.owner,
@@ -80,8 +92,17 @@ const Investigations: React.FC = () => {
                 </StyledConsoleActions>
             </StyledConsoleControls>
             <StyledConsoleMain>
+                <HistorySidebar
+                    activeInvestigationId={consoleChrome.id}
+                    onSelect={handleSidebarSelect}
+                    refreshKey={sidebarRefreshKey}
+                />
                 <StyledPanelFill>
-                    <InvestigationPage onConsoleChromeChange={setConsoleChrome} />
+                    <InvestigationPage
+                        onConsoleChromeChange={setConsoleChrome}
+                        loadInvestigationId={loadInvestigationId}
+                        onInvestigationStarted={handleInvestigationStarted}
+                    />
                 </StyledPanelFill>
             </StyledConsoleMain>
             <Modal

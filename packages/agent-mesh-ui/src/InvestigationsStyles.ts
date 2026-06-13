@@ -16,7 +16,7 @@ export const StyledAppContainer = styled.div<{ $height?: number }>`
 export const StyledConsoleMain = styled.div`
     display: flex;
     flex: 1 1 auto;
-    flex-direction: column;
+    flex-direction: row;
     min-height: 0;
     width: 100%;
     overflow: hidden;
@@ -66,8 +66,9 @@ export const StyledConsoleActions = styled.div`
 export const StyledPanelFill = styled.div`
     display: flex;
     flex: 1 1 auto;
+    flex-direction: column;
     min-height: 0;
-    width: 100%;
+    min-width: 0;
     overflow: hidden;
 `;
 
