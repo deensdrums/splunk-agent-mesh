@@ -35,3 +35,12 @@ def is_safe_model_name(name: str) -> bool:
 def is_safe_url(url: str) -> bool:
     """Validate base URL looks like an HTTP(S) origin."""
     return bool(re.match(r'^https?://[A-Za-z0-9._:\-/]+$', url))
+
+
+_INVESTIGATION_ID_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_\-]{2,63}$')
+
+
+def is_valid_investigation_id(value: str) -> bool:
+    if not value or '..' in value or '/' in value:
+        return False
+    return bool(_INVESTIGATION_ID_PATTERN.match(value))
