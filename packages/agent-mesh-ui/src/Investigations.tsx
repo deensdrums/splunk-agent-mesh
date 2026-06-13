@@ -16,6 +16,7 @@ import InvestigationPage, { ConsoleChromeState } from './pages/InvestigationPage
 import SettingsPage from './pages/SettingsPage';
 import AboutPage from './pages/AboutPage';
 import HistorySidebar from './components/HistorySidebar';
+import { useInvestigationUrl } from './hooks/useInvestigationUrl';
 
 type Overlay = 'settings' | 'about' | null;
 
@@ -25,7 +26,8 @@ const Investigations: React.FC = () => {
     const aboutButtonRef = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
     const [shellHeight, setShellHeight] = useState<number>();
     const [overlay, setOverlay] = useState<Overlay>(null);
-    const [loadInvestigationId, setLoadInvestigationId] = useState<string | null>(null);
+    const { initialId, currentId: urlId, setId: setUrlId } = useInvestigationUrl();
+    const [loadInvestigationId, setLoadInvestigationId] = useState<string | null>(initialId);
     const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
     const [consoleChrome, setConsoleChrome] = useState<ConsoleChromeState>({
         status: null,
@@ -47,15 +49,21 @@ const Investigations: React.FC = () => {
         return () => window.removeEventListener('resize', updateShellHeight);
     }, []);
 
+    useEffect(() => {
+        setLoadInvestigationId(urlId);
+    }, [urlId]);
+
     const closeOverlay = () => setOverlay(null);
 
     const handleSidebarSelect = useCallback((investigationId: string) => {
+        setUrlId(investigationId);
         setLoadInvestigationId(investigationId);
-    }, []);
+    }, [setUrlId]);
 
-    const handleInvestigationStarted = useCallback(() => {
+    const handleInvestigationStarted = useCallback((investigationId: string) => {
+        setUrlId(investigationId);
         setSidebarRefreshKey((prev) => prev + 1);
-    }, []);
+    }, [setUrlId]);
 
     const consoleMeta = [
         consoleChrome.status,
@@ -79,7 +87,10 @@ const Investigations: React.FC = () => {
                     </StyledConsoleTitleGroup>
                     <StyledConsoleActions>
                         {consoleChrome.canClear && (
-                            <Button label="Clear" appearance="subtle" onClick={() => consoleChrome.onClear?.()} />
+                            <Button label="Clear" appearance="subtle" onClick={() => {
+                                consoleChrome.onClear?.();
+                                setUrlId(null);
+                            }} />
                         )}
                         <Button
                             appearance="secondary"

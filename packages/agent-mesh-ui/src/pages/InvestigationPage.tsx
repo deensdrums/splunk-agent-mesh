@@ -22,7 +22,7 @@ export interface ConsoleChromeState {
 interface Props {
     onConsoleChromeChange?: (state: ConsoleChromeState) => void;
     loadInvestigationId?: string | null;
-    onInvestigationStarted?: () => void;
+    onInvestigationStarted?: (investigationId: string) => void;
 }
 
 const PageShell = styled.div`
@@ -381,7 +381,7 @@ const InvestigationPage: React.FC<Props> = ({ onConsoleChromeChange, loadInvesti
                 agent_order: [],
                 agents: {},
             });
-            onInvestigationStarted?.();
+            onInvestigationStarted?.(start.id);
 
             try {
                 await streamInvestigation(start.id, start.stream_token);
