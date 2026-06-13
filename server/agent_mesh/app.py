@@ -22,14 +22,14 @@ from .config import (
     STREAM_TOKEN_TTL_SECONDS,
 )
 from .conf_reader import get_conf_reader
-from .durable_investigations import DurableInvestigationError, job_from_record, repository_from_context
+from .durable_investigations import DurableInvestigationError, job_from_record, list_summary, repository_from_context
 from .investigation_models import public_artifact, public_investigation
 from .job_store import JOB_STORE
 from .request_context import RequestContext, context_from_request
 from .settings_store import SplunkSettingsStoreError, get_settings_store
 from .splunk_client import DemoSplunkClient, SplunkClient
 from .stream_tokens import create_stream_token, is_valid_stream_token
-from .security import is_safe_model_name, is_safe_url, redact_key
+from .security import is_safe_model_name, is_safe_url, is_valid_investigation_id, redact_key
 from .agents.orchestrator import Orchestrator
 
 logging.basicConfig(level=LOG_LEVEL)
@@ -211,6 +211,32 @@ def list_agents():
     return {"agents": orchestrator.get_agent_descriptors()}
 
 
+@app.get("/api/v1/investigations")
+def list_investigations(http_request: Request, limit: int = 50):
+    limit = max(1, min(limit, 200))
+    context = context_from_request(http_request)
+    username = context.username
+
+    memory = JOB_STORE.list(username=username)
+    memory_ids = {item["investigation_id"] for item in memory}
+
+    try:
+        repo = repository_from_context(context)
+        durable = repo.list(username, limit=limit)
+    except DurableInvestigationError as exc:
+        logger.error("Durable investigation list failed: %s", exc)
+        durable = []
+
+    durable_summaries = [
+        list_summary(record) for record in durable
+        if (record.get("investigation_id") or record.get("_key")) not in memory_ids
+    ]
+
+    merged = memory + durable_summaries
+    merged.sort(key=lambda item: item.get("updated_at") or item.get("created_at") or "", reverse=True)
+    return {"investigations": merged[:limit]}
+
+
 @app.post("/api/v1/investigations/run")
 def run_investigation(req: InvestigationRequest, http_request: Request):
     if not req.description.strip() and not req.demo:
@@ -257,6 +283,8 @@ def start_investigation(req: InvestigationRequest, http_request: Request):
 
 @app.get("/api/v1/investigations/{investigation_id}/status")
 def get_investigation_status(investigation_id: str, http_request: Request):
+    if not is_valid_investigation_id(investigation_id):
+        raise HTTPException(status_code=400, detail="Invalid investigation ID format.")
     context = context_from_request(http_request)
     status = JOB_STORE.status(investigation_id, username=context.username)
     if status is None:
@@ -269,6 +297,8 @@ def get_investigation_status(investigation_id: str, http_request: Request):
 
 @app.post("/api/v1/investigations/{investigation_id}/cancel")
 def cancel_investigation(investigation_id: str, http_request: Request):
+    if not is_valid_investigation_id(investigation_id):
+        raise HTTPException(status_code=400, detail="Invalid investigation ID format.")
     context = context_from_request(http_request)
     job = JOB_STORE.cancel(investigation_id, username=context.username)
     if job is None:
@@ -285,6 +315,8 @@ async def stream_investigation(investigation_id: str, stream_token: str):
     header-based auth is not possible here. Production path: signed
     stream token returned by POST /investigations/start.
     """
+    if not is_valid_investigation_id(investigation_id):
+        raise HTTPException(status_code=400, detail="Invalid investigation ID format.")
     if not is_valid_stream_token(investigation_id, stream_token):
         raise HTTPException(status_code=403, detail="Invalid or expired stream token.")
     return StreamingResponse(
@@ -299,6 +331,8 @@ async def stream_investigation(investigation_id: str, stream_token: str):
 
 @app.get("/api/v1/investigations/{investigation_id}")
 def get_investigation(investigation_id: str, http_request: Request):
+    if not is_valid_investigation_id(investigation_id):
+        raise HTTPException(status_code=400, detail="Invalid investigation ID format.")
     context = context_from_request(http_request)
     job = JOB_STORE.get(investigation_id, username=context.username)
     if job is None:
