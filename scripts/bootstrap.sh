@@ -264,7 +264,7 @@ cmd_demo() {
     start_uvicorn demo
     demo_smoke
     start_ui
-    block_until_interrupt "Open ${C_BLU}http://localhost:${UI_PORT}${C_RESET} and click \"Load Suspicious PowerShell Demo\"."
+    block_until_interrupt "Open ${C_BLU}http://localhost:${UI_PORT}${C_RESET} and click \"Run Demo Investigation\"."
 }
 
 cmd_full() {

@@ -1,9 +1,10 @@
 # Durable Investigation Records
 
-STATE-001 defined the durable Splunk KV Store record used by later history,
-restore, and URL-addressable session work. STATE-002 implemented the repository
-and runtime checkpointing. STATE-003 will add list/load APIs for the history
-sidebar and should reuse this record shape.
+STATE-001 defined the durable Splunk KV Store record. STATE-002 implemented the
+repository and runtime checkpointing. STATE-003 added list/load APIs and the
+history sidebar. STATE-004 added URL-addressable sessions (`?id=` query
+parameter, pushState/popstate). Stream resume for interrupted sessions
+(REL-001) is postponed — not required for the POC demo.
 
 ## Decision
 
