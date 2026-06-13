@@ -22,6 +22,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _job_title(job: dict) -> str | None:
+    request = job.get("request", {})
+    alert = request.get("alert_name")
+    if alert:
+        return alert
+    description = request.get("description", "")
+    return description[:80] or None
+
+
 class InvestigationJobStore:
     def __init__(
         self,
@@ -80,6 +89,28 @@ class InvestigationJobStore:
             if username and job.get("owner") != username:
                 return None
             return dict(job)
+
+    def list(self, username: str | None = None) -> list[dict]:
+        with self._lock:
+            jobs = list(self._jobs.values())
+        owned = [j for j in jobs if username is None or j.get("owner") == username]
+        owned.sort(key=lambda j: j.get("started_at", ""), reverse=True)
+        return [
+            {
+                "investigation_id": j["id"],
+                "title": _job_title(j),
+                "status": j["status"],
+                "owner": j.get("owner"),
+                "created_at": j.get("started_at"),
+                "updated_at": j.get("updated_at"),
+                "completed_at": j.get("completed_at"),
+                "event_count": sum(
+                    len(a.get("events", [])) for a in j.get("agents", {}).values()
+                ),
+                "artifact_count": len(j.get("artifacts", [])),
+            }
+            for j in owned
+        ]
 
     def status(self, investigation_id: str, username: str | None = None) -> dict | None:
         job = self.get(investigation_id, username)

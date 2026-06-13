@@ -11,8 +11,10 @@ from agent_mesh import app
 from agent_mesh.durable_investigations import (
     DurableInvestigationError,
     SplunkKVInvestigationRepository,
+    _is_expired,
     investigation_record,
     job_from_record,
+    list_summary,
 )
 from agent_mesh.job_store import InvestigationJobStore
 from agent_mesh.request_context import RequestContext
@@ -33,17 +35,27 @@ EVENT = {
 class CapturingRepository:
     def __init__(self):
         self.records: list[dict] = []
+        self._store: dict[str, dict] = {}
 
     def upsert(self, record: dict) -> None:
         self.records.append(record)
+        self._store[record["_key"]] = record
 
-    def get(self, _investigation_id: str, username: str | None = None) -> dict | None:
-        if not self.records:
+    def get(self, investigation_id: str, username: str | None = None) -> dict | None:
+        record = self._store.get(investigation_id)
+        if not record:
             return None
-        record = self.records[-1]
         if username and record["owner"]["username"] != username:
             return None
         return record
+
+    def list(self, username: str, limit: int = 50) -> list[dict]:
+        owned = [
+            r for r in self._store.values()
+            if r.get("owner", {}).get("username") == username and not _is_expired(r)
+        ]
+        owned.sort(key=lambda r: r.get("updated_at", ""), reverse=True)
+        return owned[:limit]
 
 
 class FailingRepository:
@@ -51,6 +63,9 @@ class FailingRepository:
         raise DurableInvestigationError("boom")
 
     def get(self, _investigation_id: str, username: str | None = None) -> dict | None:
+        raise DurableInvestigationError("boom")
+
+    def list(self, _username: str, limit: int = 50) -> list[dict]:
         raise DurableInvestigationError("boom")
 
 
@@ -239,3 +254,209 @@ def test_durable_read_errors_surface_as_502(monkeypatch):
         app._durable_job("inv-test", RequestContext(username="alice", splunk_token="token"))
 
     assert exc_info.value.status_code == 502
+
+
+# ---- STATE-003: list and load API tests ----
+
+
+def _record_for(investigation_id: str, owner: str, updated_at: str, status: str = "complete") -> dict:
+    job = _job(investigation_id)
+    job["owner"] = owner
+    job["status"] = status
+    record = investigation_record(
+        job,
+        {"description": f"Investigate {investigation_id}."},
+        RequestContext(username=owner, splunk_token="token"),
+    )
+    record["updated_at"] = updated_at
+    return record
+
+
+class _FakeListRequest:
+    def __init__(self, username: str = "alice", token: str = "token"):
+        self.headers = {
+            "x-splunk-user": username,
+            "x-splunk-token": token,
+            "x-agent-mesh-source": "splunk_bridge",
+        }
+
+
+def test_list_summary_returns_sidebar_fields():
+    record = _record_for("inv-sum", "alice", "2026-06-10T10:00:00+00:00")
+    summary = list_summary(record)
+
+    assert summary["investigation_id"] == "inv-sum"
+    assert summary["owner"] == "alice"
+    assert summary["status"] == "complete"
+    assert summary["updated_at"] == "2026-06-10T10:00:00+00:00"
+    assert "events" not in summary
+    assert "artifacts" not in summary
+    assert "agents" not in summary
+    assert "request" not in summary
+
+
+def test_list_returns_owned_records_reverse_chronological(monkeypatch):
+    repository = CapturingRepository()
+    repository.upsert(_record_for("inv-old", "alice", "2026-06-01T10:00:00+00:00"))
+    repository.upsert(_record_for("inv-new", "alice", "2026-06-10T10:00:00+00:00"))
+    monkeypatch.setattr(app, "repository_from_context", lambda _context: repository)
+    monkeypatch.setattr(app.JOB_STORE, "list", lambda **_kwargs: [])
+
+    result = app.list_investigations(_FakeListRequest(), limit=50)
+
+    ids = [item["investigation_id"] for item in result["investigations"]]
+    assert ids == ["inv-new", "inv-old"]
+
+
+def test_list_excludes_other_users_records(monkeypatch):
+    repository = CapturingRepository()
+    repository.upsert(_record_for("inv-alice", "alice", "2026-06-10T10:00:00+00:00"))
+    repository.upsert(_record_for("inv-bob", "bob", "2026-06-10T12:00:00+00:00"))
+    monkeypatch.setattr(app, "repository_from_context", lambda _context: repository)
+    monkeypatch.setattr(app.JOB_STORE, "list", lambda **_kwargs: [])
+
+    result = app.list_investigations(_FakeListRequest(username="alice"), limit=50)
+
+    ids = [item["investigation_id"] for item in result["investigations"]]
+    assert ids == ["inv-alice"]
+    assert "inv-bob" not in ids
+
+
+def test_list_excludes_expired_records(monkeypatch):
+    repository = CapturingRepository()
+    record = _record_for("inv-expired", "alice", "2026-06-10T10:00:00+00:00")
+    record["expires_at"] = "2020-01-01T00:00:00+00:00"
+    repository.upsert(record)
+    repository.upsert(_record_for("inv-valid", "alice", "2026-06-10T10:00:00+00:00"))
+    monkeypatch.setattr(app, "repository_from_context", lambda _context: repository)
+    monkeypatch.setattr(app.JOB_STORE, "list", lambda **_kwargs: [])
+
+    result = app.list_investigations(_FakeListRequest(), limit=50)
+
+    ids = [item["investigation_id"] for item in result["investigations"]]
+    assert "inv-expired" not in ids
+    assert "inv-valid" in ids
+
+
+def test_list_respects_limit(monkeypatch):
+    repository = CapturingRepository()
+    for i in range(5):
+        repository.upsert(_record_for(f"inv-{i:03d}", "alice", f"2026-06-{10+i}T10:00:00+00:00"))
+    monkeypatch.setattr(app, "repository_from_context", lambda _context: repository)
+    monkeypatch.setattr(app.JOB_STORE, "list", lambda **_kwargs: [])
+
+    result = app.list_investigations(_FakeListRequest(), limit=2)
+
+    assert len(result["investigations"]) == 2
+
+
+def test_list_merges_memory_and_durable_deduplicates(monkeypatch):
+    repository = CapturingRepository()
+    repository.upsert(_record_for("inv-durable-only", "alice", "2026-06-01T10:00:00+00:00"))
+    repository.upsert(_record_for("inv-both", "alice", "2026-06-05T10:00:00+00:00"))
+
+    memory_items = [
+        {
+            "investigation_id": "inv-both",
+            "title": "Memory version",
+            "status": "running",
+            "owner": "alice",
+            "created_at": "2026-06-05T10:00:00+00:00",
+            "updated_at": "2026-06-10T10:00:00+00:00",
+            "completed_at": None,
+            "event_count": 3,
+            "artifact_count": 1,
+        },
+    ]
+    monkeypatch.setattr(app, "repository_from_context", lambda _context: repository)
+    monkeypatch.setattr(app.JOB_STORE, "list", lambda **_kwargs: memory_items)
+
+    result = app.list_investigations(_FakeListRequest(), limit=50)
+
+    ids = [item["investigation_id"] for item in result["investigations"]]
+    assert ids.count("inv-both") == 1
+    both_item = next(item for item in result["investigations"] if item["investigation_id"] == "inv-both")
+    assert both_item["status"] == "running"
+    assert "inv-durable-only" in ids
+
+
+def test_list_graceful_when_durable_fails(monkeypatch):
+    monkeypatch.setattr(app, "repository_from_context", lambda _context: FailingRepository())
+    memory_items = [
+        {
+            "investigation_id": "inv-mem",
+            "title": "In memory",
+            "status": "running",
+            "owner": "alice",
+            "created_at": "2026-06-10T10:00:00+00:00",
+            "updated_at": "2026-06-10T10:00:00+00:00",
+            "completed_at": None,
+            "event_count": 0,
+            "artifact_count": 0,
+        },
+    ]
+    monkeypatch.setattr(app.JOB_STORE, "list", lambda **_kwargs: memory_items)
+
+    result = app.list_investigations(_FakeListRequest(), limit=50)
+
+    assert len(result["investigations"]) == 1
+    assert result["investigations"][0]["investigation_id"] == "inv-mem"
+
+
+def test_list_empty_in_dev_mode(monkeypatch):
+    monkeypatch.setattr(app.JOB_STORE, "list", lambda **_kwargs: [])
+
+    result = app.list_investigations(
+        _FakeListRequest(username="dev-user", token=""),
+        limit=50,
+    )
+
+    assert result["investigations"] == []
+
+
+def test_get_investigation_returns_400_for_malformed_id():
+    with pytest.raises(HTTPException) as exc_info:
+        app.get_investigation("../../../etc/passwd", _FakeListRequest())
+    assert exc_info.value.status_code == 400
+
+
+def test_get_investigation_returns_400_for_empty_id():
+    with pytest.raises(HTTPException) as exc_info:
+        app.get_investigation("", _FakeListRequest())
+    assert exc_info.value.status_code == 400
+
+
+def test_get_investigation_returns_404_for_wrong_owner(monkeypatch):
+    repository = CapturingRepository()
+    repository.upsert(_record_for("inv-alice", "alice", "2026-06-10T10:00:00+00:00"))
+    monkeypatch.setattr(app.JOB_STORE, "get", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(app, "repository_from_context", lambda _context: repository)
+
+    with pytest.raises(HTTPException) as exc_info:
+        app.get_investigation("inv-alice", _FakeListRequest(username="bob"))
+
+    assert exc_info.value.status_code == 404
+
+
+def test_get_investigation_status_returns_400_for_malformed_id():
+    with pytest.raises(HTTPException) as exc_info:
+        app.get_investigation_status("../../bad", _FakeListRequest())
+    assert exc_info.value.status_code == 400
+
+
+def test_job_store_list_returns_owned_jobs():
+    store = InvestigationJobStore()
+    context_alice = RequestContext(username="alice", splunk_token="token")
+    context_bob = RequestContext(username="bob", splunk_token="token")
+
+    def noop_runner(_payload, _context, _id, _cb):
+        return {"id": _id, "status": "complete", "completed_at": "2026-06-10T10:00:00+00:00",
+                "agents": {}, "agent_order": [], "sections": [], "artifacts": []}
+
+    store.create({"description": "Alice investigation", "demo": False}, context_alice, noop_runner)
+    store.create({"description": "Bob investigation", "demo": False}, context_bob, noop_runner)
+
+    alice_list = store.list(username="alice")
+    assert len(alice_list) == 1
+    assert alice_list[0]["owner"] == "alice"
+    assert alice_list[0]["title"] == "Alice investigation"

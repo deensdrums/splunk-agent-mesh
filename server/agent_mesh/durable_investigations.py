@@ -247,6 +247,22 @@ def job_from_record(record: dict) -> dict:
     }
 
 
+def list_summary(record: dict) -> dict:
+    """Project a durable record to sidebar-suitable summary fields."""
+    summary = record.get("summary", {})
+    return {
+        "investigation_id": record.get("investigation_id") or record.get("_key"),
+        "title": summary.get("title"),
+        "status": _api_status(record.get("status")),
+        "owner": record.get("owner", {}).get("username"),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+        "completed_at": record.get("completed_at"),
+        "event_count": summary.get("event_count", 0),
+        "artifact_count": summary.get("artifact_count", 0),
+    }
+
+
 class SplunkKVInvestigationRepository:
     """KV Store repository using the caller's Splunk session token."""
 
@@ -316,6 +332,31 @@ class SplunkKVInvestigationRepository:
             return None
         return record
 
+    def list(self, username: str, limit: int = 50) -> list[dict]:
+        import json as _json
+        query = _json.dumps({"owner.username": username})
+        response = httpx.get(
+            self._collection_url(),
+            params={
+                "output_mode": "json",
+                "query": query,
+                "sort": "updated_at",
+                "sort_dir": "desc",
+                "count": limit,
+            },
+            headers=self._headers,
+            verify=self.verify,
+            timeout=READ_TIMEOUT_SECONDS,
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise DurableInvestigationError(f"KV Store list failed: {exc}") from exc
+        records = response.json()
+        if not isinstance(records, list):
+            return []
+        return [r for r in records if not _is_expired(r)]
+
     def _collection_url(self, key: str | None = None) -> str:
         path = f"/servicesNS/nobody/{self.app_id}/storage/collections/data/{COLLECTION_NAME}"
         if key:
@@ -329,6 +370,9 @@ class NullInvestigationRepository:
 
     def get(self, _investigation_id: str, username: str | None = None) -> dict | None:
         return None
+
+    def list(self, _username: str, limit: int = 50) -> list[dict]:
+        return []
 
 
 def repository_from_context(context: RequestContext) -> SplunkKVInvestigationRepository | NullInvestigationRepository:
