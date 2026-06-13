@@ -1,7 +1,18 @@
 # Splunk Agent Mesh — Secure Settings & Auth
 
-This covers two concerns: how **LLM provider settings/keys** are stored, and how
-**Splunk access** is authenticated for live investigations.
+This covers three concerns: how **LLM provider settings/keys** are stored, how
+**Splunk access** is authenticated for live investigations, and the **POC
+security boundaries** that are explicit design limitations.
+
+Live mode operates on **two independent data planes**:
+
+- **Browser-side**: the React app fetches search result rows directly from
+  Splunk Web's `splunkd/__raw` proxy using the analyst's own Splunk Web cookie.
+  The backend never sees or proxies these rows.
+- **Backend-side**: uvicorn handles LLM calls, agent config, KV Store
+  checkpoints, and investigation orchestration. Each credential mode is
+  explicitly selected via environment variables, not inferred from
+  `SPLUNK_TOKEN` presence.
 
 ---
 
@@ -115,3 +126,34 @@ has — searches run with least privilege, as that analyst.
 
 `AGENT_MESH_LOG_LLM=1` logs full LLM requests/responses for debugging — keep it
 off outside local debugging since prompts/results may contain sensitive data.
+
+---
+
+## POC security boundaries
+
+These are explicit design limitations for the proof-of-concept, not oversights:
+
+- **Loopback-only deployment**: uvicorn must not be exposed beyond `127.0.0.1`.
+  The `agent_mesh_bridge` trusts `X-Splunk-User` / `X-Splunk-Token` because
+  they arrive from Splunk Web over loopback. External exposure would let any
+  client impersonate any Splunk user.
+- **Ephemeral stream-token signing secret**: `stream_tokens.py` generates the
+  HMAC secret per-process via `secrets.token_bytes(32)` at import time. A
+  uvicorn restart invalidates all outstanding stream tokens. Production would
+  use a persisted or shared signing key.
+- **In-memory job state**: running investigations live in `InvestigationJobStore`
+  (in-memory). A server restart loses in-flight runs. Completed investigations
+  survive in KV Store. Stream resume for interrupted sessions is not
+  implemented (REL-001 postponed).
+- **Single-process assumption**: the signing secret, in-memory job store, and
+  durable checkpoint writer assume one uvicorn worker. Multiple workers would
+  need coordination.
+- **Per-user only, no RBAC**: investigation visibility is scoped to
+  `owner.username`. No admin/global view, cross-user sharing, or role-based
+  access control.
+- **No TLS termination**: uvicorn runs plain HTTP. TLS is expected from Splunk
+  Web (Tier 2) or an external reverse proxy.
+- **Durable investigation ownership**: KV Store records use the analyst's
+  delegated session for reads and writes. Investigation records include
+  `owner.username` and the backend filters by ownership, returning 404 (not
+  403) for wrong-owner access to prevent information leakage.

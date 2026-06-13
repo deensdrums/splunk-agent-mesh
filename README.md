@@ -34,7 +34,8 @@ ConfReader ──▶ Orchestrator ──▶ Threat Hunter (agentic event loop)
                                                  (progressive, live charts)
 ```
 
-- **Backend**: FastAPI on port 8765. Reads `agents.conf` via Splunk REST.
+- **Backend**: FastAPI on port 8765. Reads `agents.conf` from file (default)
+  or via Splunk REST (opt-in).
 - **One visible agent**: the Threat Hunter (`spl_hunter`). The reporting agent
   (`executive_brief`) is an internal sub-agent invoked only via `handoff`; its
   output is summarized back into the Threat Hunter's event stream. The UI never
@@ -68,21 +69,24 @@ packages/
       pages/                      # InvestigationPage, SettingsPage, AboutPage
       components/
         InvestigationReport.tsx   # Console transcript: toolbar, scroll area, status bar
+        HistorySidebar.tsx        # Collapsible investigation history rail + panel
         EventRenderer.tsx         # Renders one structured event (colored accent blocks)
         ArtifactRenderer.tsx      # Search results → Column/Line/Pie/Bar/Table/Single
         MarkdownView.tsx          # Sanitized markdown (final-summary / legacy fallback)
         AgentStatusBadge.tsx
         legacy/                   # Archived structured-output components (unused)
-      hooks/useStaggeredReveal.ts # Reveal events one at a time
+      hooks/
+        useStaggeredReveal.ts     # Reveal events one at a time
+        useInvestigationUrl.ts    # URL-addressable sessions via ?id= query parameter
       services/
         apiClient.ts              # HTTP + SSE client (routes via Splunk bridge in Web)
         splunkWeb.ts              # Splunk Web runtime detection + REST URL helper
         splunkSearchResults.ts    # Browser-side polling of Splunk search results
-      demo/demoData.ts            # Canned Threat Hunter event stream for offline demo
       types.ts
   agent-mesh/                     # @splunk/agent-mesh — Splunk app bundle
     src/main/resources/splunk/
       default/agents.conf         # ← the mesh definition lives here
+      default/collections.conf    # KV Store collection for durable investigations
       default/restmap.conf        # agent_mesh_bridge custom REST endpoint
       default/web.conf            # exposes the bridge under splunkd/__raw
       bin/agent_mesh_bridge.py    # Splunk-authenticated loopback proxy to uvicorn
@@ -91,11 +95,14 @@ packages/
 server/
   agent_mesh/                     # Python FastAPI backend
     app.py                        # FastAPI routes + SSE streaming + delegated-auth checks
+    config.py                     # Environment-based runtime configuration
     conf_reader.py                # SplunkRestConfReader + FileConfReader
     splunk_client.py              # Live Splunk search client (dispatch/poll/preview)
-    job_store.py                  # Async investigation job manager
+    job_store.py                  # In-memory investigation job manager + durable checkpointing
+    durable_investigations.py     # KV Store persistence: records, repository, restore
     investigation_models.py       # Result-shape helpers + browser-safe projections
     request_context.py            # Per-request auth context (delegated session)
+    security.py                   # Input validation (IDs, model names, URLs)
     stream_tokens.py              # Short-lived signed SSE stream tokens
     agents/
       agent_config.py             # AgentConfig dataclass
@@ -104,7 +111,7 @@ server/
       orchestrator.py             # Primary/sub-agent split, execution, artifact collection
     tools/splunk_search.py        # SPL execution, artifact shaping, viz inference
     llm/                          # Anthropic, OpenRouter, OpenAI-compatible
-    demo/demo_case.py             # Canned Threat Hunter event stream + artifact
+    demo/demo_case.py             # Paced Log4Shell replay (backend-side, no LLM call)
 docs/
 ```
 
@@ -112,7 +119,11 @@ docs/
 
 ## Setup
 
-### Quick start (judges)
+The project supports **two tiers**. Tier 1 (demo) is the default and requires
+nothing beyond the repo and standard tooling. Tier 2 (full/live) connects to an
+existing Splunk Enterprise instance with a real LLM provider.
+
+### Quick start — Tier 1 demo (no Splunk, no LLM key)
 
 From a clean checkout (macOS/Linux):
 
@@ -120,11 +131,27 @@ From a clean checkout (macOS/Linux):
 ./scripts/bootstrap.sh
 ```
 
-This preflights prerequisites, starts the backend + a standalone UI, and prints
-`http://localhost:8080` — open it and click **"Load Suspicious PowerShell
-Demo."** No Splunk, LLM key, or tokens required; Ctrl-C to stop. For the
-full/live experience against an existing Splunk, use `./scripts/bootstrap.sh
-full`. See `scripts/README.md` and `docs/DEMO_RUNTIME.md`.
+This preflights prerequisites (Node >= 22, Yarn, Python >= 3.11, curl), creates
+a backend venv, starts uvicorn on `:8765` and a standalone UI on `:8080`, and
+prints the URL. Open `http://localhost:8080` and click **"Run Demo
+Investigation"** — the backend replays a paced Log4Shell scenario with canned
+events and a chart artifact. No Splunk, LLM key, or tokens required. Ctrl-C
+stops everything.
+
+### Quick start — Tier 2 full/live (existing Splunk + LLM)
+
+```bash
+export AGENT_MESH_API_KEY=<your-llm-provider-key>
+export SPLUNK_HOME=/path/to/splunk
+./scripts/bootstrap.sh full
+```
+
+This builds the Splunk app, links it into `$SPLUNK_HOME/etc/apps`, starts
+uvicorn (with `SPLUNK_TOKEN` intentionally unset), and prints the Splunk Web
+URL. After linking, **restart Splunk** so it loads the app and the
+`agent_mesh_bridge` REST endpoint, then load sample data (the script prints the
+SPL). Searches run as the analyst's own delegated Splunk session — no shared
+admin token. See `scripts/README.md` and `docs/DEMO_RUNTIME.md`.
 
 ### Prerequisites
 - Node.js >= 22
@@ -160,23 +187,33 @@ cd server && python -m pytest tests/                       # backend
 yarn workspace @splunk/agent-mesh-ui run test              # frontend
 ```
 
-### Environment variables
+### Credentials and environment variables
 
-| Variable | Required | Description |
+Each credential has a single purpose; none are inferred or silently coupled.
+
+| Variable | Required | Purpose |
 |---|---|---|
-| `AGENT_MESH_API_KEY` | For LLM calls | LLM API key read by the dev settings store |
-| `AGENT_MESH_DEV_MODE` | Optional | Set `1` to allow plaintext key persistence |
-| `SPLUNK_HOST` | For live mode | Splunk REST URL (default: `https://localhost:8089`) |
-| `SPLUNK_TOKEN` | Optional | Service token for explicitly enabled sidecar Splunk REST operations |
-| `AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK` | Optional | Set `1` to allow live runs to use `SPLUNK_TOKEN` when no delegated session is present |
-| `AGENT_MESH_STREAM_TOKEN_TTL_SECONDS` | Optional | SSE stream-token lifetime (default `14400`) |
-| `AGENT_MESH_LOG_LLM` | Optional | Set `1` to log full LLM requests/responses (debugging) |
-| `AGENT_MESH_SETTINGS_STORE` | Optional | LLM key storage: `dev` (default) or `splunk` |
-| `AGENT_MESH_CONF_SOURCE` | Optional | Agent config source: `file` (default) or `splunk` |
+| `AGENT_MESH_API_KEY` | Tier 2 | LLM provider API key, read by `DevSettingsStore` |
+| `SPLUNK_HOST` | Tier 2 | Splunk REST URL (default `https://localhost:8089`) |
+| `SPLUNK_TOKEN` | Opt-in only | Service token for explicitly enabled features (see below) |
+| `AGENT_MESH_SETTINGS_STORE` | Optional | `dev` (default) or `splunk` — selects LLM key storage backend |
+| `AGENT_MESH_CONF_SOURCE` | Optional | `file` (default) or `splunk` — selects agent config source |
+| `AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK` | Optional | Set `1` to allow `SPLUNK_TOKEN` as a search fallback when no delegated session is present |
+| `AGENT_MESH_STREAM_TOKEN_TTL_SECONDS` | Optional | SSE stream-token lifetime in seconds (default `14400`) |
+| `AGENT_MESH_DEV_MODE` | Optional | Set `1` to allow `DevSettingsStore` to persist keys to disk |
+| `AGENT_MESH_LOG_LLM` | Optional | Set `1` to log full LLM request/response payloads (debugging only) |
+| `AGENT_MESH_LOG_LEVEL` | Optional | Python log level (default `INFO`) |
+| `AGENT_MESH_SPLUNK_APP_ID` | Optional | Splunk app name (default `splunk-agent-mesh`) |
+| `AGENT_MESH_CORS_ORIGINS` | Optional | Comma-separated CORS origins (default includes `localhost:8000,8080,3000`) |
 
-In production the analyst's own Splunk session is delegated per request
-(see **Auth** below); `SPLUNK_TOKEN` is not the primary credential and its
-presence alone does not enable any sidecar Splunk REST operation.
+`SPLUNK_TOKEN` is **not** the primary credential. Its presence alone does not
+enable any sidecar operation. Three features each require their own explicit
+opt-in to use it:
+
+- `AGENT_MESH_SETTINGS_STORE=splunk` — LLM key storage via Splunk Passwords API
+- `AGENT_MESH_CONF_SOURCE=splunk` — agent config via Splunk REST
+- `AGENT_MESH_ALLOW_SERVICE_SEARCH_FALLBACK=1` — search fallback when no
+  delegated session is present
 
 ### Link into Splunk
 
@@ -257,9 +294,11 @@ chart in `ArtifactRenderer`.
 |---|---|---|
 | GET | `/api/v1/health` | Health check |
 | GET | `/api/v1/agents` | List user-visible (primary) agents |
+| GET | `/api/v1/investigations` | List investigations for the authenticated user (merged in-memory + durable) |
 | POST | `/api/v1/investigations/run` | Synchronous investigation (blocks until complete) |
 | POST | `/api/v1/investigations/start` | Start async investigation; returns id + `stream_token` |
-| GET | `/api/v1/investigations/{id}/status` | Get investigation state |
+| GET | `/api/v1/investigations/{id}` | Get full investigation (in-memory, or restored from KV Store) |
+| GET | `/api/v1/investigations/{id}/status` | Get investigation state summary |
 | GET | `/api/v1/investigations/{id}/stream?stream_token=…` | SSE stream of progressive events |
 | POST | `/api/v1/investigations/{id}/cancel` | Cancel a running investigation |
 | GET / POST | `/api/v1/settings` | Get / save LLM provider config |
@@ -273,29 +312,54 @@ SSE events: `agent_order`, `agent_update`, `agent_complete`,
 
 ## Auth (live mode)
 
-Inside Splunk Web the React app calls the **`agent_mesh_bridge`** custom REST
-endpoint, which forwards the request to uvicorn with the analyst's Splunk
-username and session key. The backend validates that session
-(`/authentication/current-context`) and runs all searches as that user — no
-shared admin token. The SSE stream connects directly to uvicorn, gated by a
-short-lived signed `stream_token` from `/start`.
+Live mode has two independent data planes. Understanding the split is key to
+the security model.
 
-Search rows are **not** returned by the JSON API; the browser fetches them
-itself from Splunk Web's authenticated `splunkd/__raw` proxy (demo artifacts
-keep their rows). See `docs/ARCHITECTURE.md` and `docs/SECURE_SETTINGS.md`.
+### Browser-side: analyst's Splunk Web session
+
+The browser fetches search result **rows** directly from Splunk Web's
+`splunkd/__raw` proxy using the analyst's own Splunk Web cookie. The backend
+never sees or proxies these rows — `public_artifact` strips them from API
+responses. Demo artifacts keep their rows (no real search job).
+
+### Backend-side: uvicorn credential modes
+
+| Operation | Credential | How it gets there |
+|---|---|---|
+| Live investigation searches | Analyst's delegated Splunk session | `agent_mesh_bridge` forwards `X-Splunk-User` + `X-Splunk-Token` over loopback |
+| Session validation | Same delegated session | Backend calls `/authentication/current-context` to confirm the session matches the requesting user |
+| LLM calls | `AGENT_MESH_API_KEY` (env) | Read by `DevSettingsStore` (default) |
+| Agent config reads | Local file (default) | `FileConfReader` reads `agents.conf` from the repo |
+| KV Store checkpoints | Analyst's delegated session | Investigation records are written/read with the analyst's own session |
+| SSE stream auth | Signed `stream_token` | Issued by `POST /start`, HMAC-signed, default 4h TTL |
+
+Each uvicorn-side credential mode is **explicitly selected**, not inferred from
+`SPLUNK_TOKEN` presence. See **Credentials and environment variables** above.
+
+The `agent_mesh_bridge` REST endpoint runs inside Splunk Web and forwards
+requests to uvicorn over loopback. **uvicorn must not be exposed beyond
+loopback** — any client that can set `X-Splunk-User` / `X-Splunk-Token` headers
+would be trusted. See `docs/SECURE_SETTINGS.md`.
 
 ---
 
 ## Demo Mode
 
-No API key or Splunk connection required. Click **Load Suspicious PowerShell
-Demo** in the Investigation tab. The backend returns a canned Threat Hunter
-**event stream** (narration → search → finding → handoff → final) plus one
-search artifact, mirroring the live wire shape:
+No API key or Splunk connection required. Click **"Run Demo Investigation"**
+in the Investigation tab.
 
-> User `jsmith` opens a suspicious Office document → `winword.exe` spawns
-> encoded PowerShell → rare domain contacted → finance file server accessed
-> → 48 MB exfiltrated.
+The demo is **backend-side**: `server/agent_mesh/demo/demo_case.py` replays a
+canned Threat Hunter event stream with pacing (default 1.1s per step, set via
+`AGENT_MESH_DEMO_STEP_SECONDS`). Events stream over SSE exactly like a live
+run — narration → search (pending → running → done) → finding → handoff →
+final — plus one chart artifact with guaranteed rows. The UI renders the same
+progressive transcript it shows for live investigations.
+
+> **Scenario:** User `jsmith` opens a suspicious Office document →
+> `winword.exe` spawns encoded PowerShell → rare domain contacted → finance
+> file server accessed → 48 MB exfiltrated. (Log4Shell / CVE-2021-44228.)
+
+The console shows a **"Demo data"** badge for demo runs.
 
 ---
 
@@ -313,9 +377,58 @@ CSVs live at `packages/agent-mesh/src/main/resources/splunk/lookups/`.
 
 ---
 
+## Investigation History and Durable Sessions
+
+Completed and in-progress investigations are checkpointed to a Splunk KV Store
+collection (`agent_mesh_investigations`). A collapsible history sidebar lists
+past investigations; clicking one restores it into the console. Investigations
+are URL-addressable via `?id=<investigation_id>` — shareable links, browser
+back/forward, and page refresh all restore the session.
+
+- **Per-user visibility**: each user sees only their own investigations.
+- **30-day retention**: records expire after 30 days (filtered client-side).
+- **Artifact metadata only**: search SIDs and visualization hints are stored,
+  not result rows. Restored artifacts show "Results not available — run the
+  search in Splunk" for real searches; demo artifacts keep their rows.
+- **In-memory + durable merge**: the list API merges running in-memory jobs with
+  durable KV Store records, deduplicating by ID (in-memory wins).
+
+See `docs/DURABLE_INVESTIGATIONS.md` for the record schema and checkpoint
+timing.
+
+---
+
+## Known POC Limitations
+
+These are explicit design boundaries for the current proof-of-concept:
+
+- **Loopback-only deployment**: uvicorn must not be exposed beyond `127.0.0.1`.
+  The `agent_mesh_bridge` trusts `X-Splunk-User` / `X-Splunk-Token` headers
+  because they arrive over loopback from Splunk Web. Any external client that
+  can set those headers would be implicitly trusted.
+- **Ephemeral stream-token signing secret**: the HMAC secret for SSE stream
+  tokens is generated per-process (`secrets.token_bytes(32)` at import time).
+  A uvicorn restart invalidates all outstanding stream tokens. Acceptable for
+  single-process POC; production would use a persisted or shared secret.
+- **In-memory job state**: `InvestigationJobStore` holds running investigations
+  in memory. A server restart loses in-flight runs. Completed investigations
+  survive in KV Store. Stream resume for interrupted sessions is not implemented
+  (REL-001 postponed).
+- **Single-process assumption**: the stream-token secret and in-memory job store
+  assume a single uvicorn worker. Multiple workers would need a shared secret
+  and a distributed job store.
+- **Per-user only, no RBAC**: investigation visibility is scoped to
+  `owner.username`. There is no admin/global view, role-based access, or
+  cross-user sharing.
+- **No TLS termination**: uvicorn runs plain HTTP. TLS is expected from the
+  reverse proxy (Splunk Web for Tier 2, or an external proxy for standalone).
+
+---
+
 ## Architecture
 
 See `docs/ARCHITECTURE.md` for the full design, `docs/DECISIONS.md` for ADRs,
 `docs/AGENT_DESIGN.md` for the stanza + event-contract reference,
-`docs/AGENTIC_ARCHITECTURE_REVIEW.md` for the agentic loop as built, and
+`docs/AGENTIC_ARCHITECTURE_REVIEW.md` for the agentic loop as built,
+`docs/DURABLE_INVESTIGATIONS.md` for the KV Store persistence model, and
 `docs/legacy/HISTORY.md` for how the project got here.

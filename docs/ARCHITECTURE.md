@@ -136,19 +136,24 @@ The component library is `@splunk/agent-mesh-ui`; the Splunk app
 ### Component hierarchy
 
 ```
-Investigations
-└── InvestigationPage              (form, start, SSE, browser result polling)
+Investigations                         (app shell, URL routing via useInvestigationUrl)
+├── HistorySidebar                     (collapsible rail/panel, fetch-on-open)
+└── InvestigationPage                  (form, start, SSE, browser result polling, restore)
     ├── FormCard
-    └── InvestigationReport        (console workspace)
-        ├── Toolbar                (title + Clear)
-        ├── AgentHead              (agent name + status badge)
+    └── InvestigationReport            (console workspace)
+        ├── Toolbar                    (title + Clear)
+        ├── AgentHead                  (agent name + status badge)
         └── TranscriptShell
-            ├── ScrollArea         (staggered reveal, stick-to-bottom autoscroll)
-            │   ├── EventRenderer × N   (colored accent blocks per event type)
-            │   ├── ArtifactRenderer    (inline chart/table after each search event)
-            │   └── ThinkingIndicator   (while the agent is working)
-            └── StatusBar          (investigation state, hunter state, event count, id)
+            ├── ScrollArea             (staggered reveal, stick-to-bottom autoscroll)
+            │   ├── EventRenderer × N  (colored accent blocks per event type)
+            │   ├── ArtifactRenderer   (inline chart/table after each search event)
+            │   └── ThinkingIndicator  (while the agent is working)
+            └── StatusBar              (investigation state, hunter state, event count, id)
 ```
+
+Investigations are URL-addressable via `?id=<investigation_id>`. The
+`useInvestigationUrl` hook manages `pushState`/`replaceState`/`popstate` and
+preserves other query parameters (e.g. Splunk's `ns`, `prov`).
 
 ## Backend architecture
 
@@ -158,6 +163,12 @@ Investigations
 agent stanzas via `/servicesNS/nobody/splunk-agent-mesh/configs/conf-agents`.
 **Job execution**: `InvestigationJobStore` runs investigations in a thread pool
 and the SSE endpoint streams progress.
+**Durable persistence**: `InvestigationJobStore` checkpoints to a Splunk KV
+Store collection (`agent_mesh_investigations`) via `durable_investigations.py`
+at creation, each progress update, and completion. The list API merges
+in-memory and durable results, deduplicating by ID. Restored investigations
+are projected back into the public investigation shape by `job_from_record()`.
+See `docs/DURABLE_INVESTIGATIONS.md` for the record schema.
 
 ### Orchestrator
 
@@ -235,17 +246,27 @@ adapters implement the same interface. Because the agentic loop is built on
 - **Output safety**: the model boundary accepts only validated JSON events;
   markdown rendered in the UI is sanitized via `rehype-sanitize`.
 
-## Known risks
+## Known risks and POC limitations
 
-1. **CORS**: the backend needs the Splunk Web origin allowlisted (default
+1. **Loopback-only deployment**: uvicorn must not be exposed beyond `127.0.0.1`.
+   The `agent_mesh_bridge` trusts `X-Splunk-User` / `X-Splunk-Token` headers
+   because they arrive over loopback from Splunk Web.
+2. **CORS**: the backend needs the Splunk Web origin allowlisted (default
    includes `http://localhost:8000`).
-2. **In-memory job state**: `InvestigationJobStore` holds investigations in
-   memory; a server restart loses in-flight runs (and invalidates issued stream
-   tokens).
-3. **Single-process assumption**: the stream-token secret and job store assume
-   one process; running multiple uvicorn workers would need a shared secret and
-   store.
-4. **Splunk REST availability**: if REST is unreachable, `get_agents()` returns
+3. **In-memory job state**: `InvestigationJobStore` holds running investigations
+   in memory; a server restart loses in-flight runs (and invalidates issued
+   stream tokens). Completed investigations survive in KV Store.
+4. **Ephemeral stream-token secret**: the HMAC signing secret is per-process
+   (`secrets.token_bytes(32)` at import time). A uvicorn restart invalidates
+   all outstanding tokens. Stream resume for interrupted sessions is not
+   implemented (REL-001 postponed).
+5. **Single-process assumption**: the stream-token secret, in-memory job store,
+   and durable checkpoint writer assume one process; multiple uvicorn workers
+   would need a shared secret, distributed store, and coordinated writes.
+6. **Per-user only, no RBAC**: investigation visibility is scoped to
+   `owner.username`. No admin/global view, role-based access, or cross-user
+   sharing.
+7. **Splunk REST availability**: if REST is unreachable, `get_agents()` returns
    `[]` and the UI shows an empty mesh.
-5. **LLM latency / cost**: an agentic run makes several LLM calls;
+8. **LLM latency / cost**: an agentic run makes several LLM calls;
    `max_iterations` is the primary cap.

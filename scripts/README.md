@@ -13,8 +13,8 @@ From a clean checkout, on macOS/Linux:
 ```
 
 That runs **demo mode**: it starts the backend and a standalone UI, then prints
-`http://localhost:8080`. Open it and click **"Load Suspicious PowerShell
-Demo"** — no Splunk, no LLM key, no tokens required. Press **Ctrl-C** to stop.
+`http://localhost:8080`. Open it and click **"Run Demo Investigation"** — no Splunk, no LLM key, no
+tokens required. Press **Ctrl-C** to stop.
 
 ## Modes
 

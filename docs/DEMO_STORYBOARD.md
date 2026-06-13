@@ -17,8 +17,8 @@ Everything below maps to events as they appear in that transcript.
 ## [0:20] Launch the Investigation (25 seconds)
 
 - Open Splunk → **Splunk Agent Mesh**.
-- Type the alert description (or click **"Load Suspicious PowerShell Demo"**).
-- Click **"Start Investigation"**.
+- Type the alert description, or click **"Run Demo Investigation"** for the
+  canned Log4Shell scenario.
 
 > "One agent — the Threat Hunter — owns this investigation. Watch it think,
 > search, and report in a single stream."
