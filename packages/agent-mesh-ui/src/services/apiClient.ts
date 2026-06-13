@@ -7,6 +7,7 @@ import {
     InvestigationResult,
     InvestigationStartResponse,
     InvestigationStatus,
+    InvestigationSummary,
     LLMSettings,
     SaveSettingsRequest,
 } from '../types';
@@ -95,6 +96,10 @@ export const apiClient = {
 
     cancelInvestigation(id: string): Promise<{ id: string; status: InvestigationResult['status']; completed_at?: string }> {
         return request(`/investigations/${encodeURIComponent(id)}/cancel`, { method: 'POST', body: '{}' });
+    },
+
+    listInvestigations(limit = 50): Promise<{ investigations: InvestigationSummary[] }> {
+        return request(`/investigations?limit=${limit}`, undefined, 10_000);
     },
 
     getAgents(): Promise<{ agents: AgentDescriptor[] }> {

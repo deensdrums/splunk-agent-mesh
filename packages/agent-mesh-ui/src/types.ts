@@ -109,6 +109,18 @@ export interface InvestigationResult {
     error?: string | null;
 }
 
+export interface InvestigationSummary {
+    investigation_id: string;
+    title: string | null;
+    status: InvestigationResult['status'];
+    owner: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    completed_at: string | null;
+    event_count: number;
+    artifact_count: number;
+}
+
 export interface InvestigationRequest {
     description: string;
     host?: string;
