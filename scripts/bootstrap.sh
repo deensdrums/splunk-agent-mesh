@@ -116,12 +116,13 @@ install_app() {
 
 # ---- dependency setup ------------------------------------------------------
 ensure_venv() {
-    if [ ! -x "$VENV/bin/uvicorn" ]; then
-        info "Creating Python venv + installing backend deps…"
+    if [ ! -d "$VENV" ]; then
+        info "Creating Python venv…"
         python3 -m venv "$VENV" || die "venv creation failed" "Check your Python install"
-        "$VENV/bin/pip" install -q -r "$REPO_ROOT/server/requirements.txt" \
-            || die "pip install failed" "Check server/requirements.txt and the output above"
     fi
+    info "Installing backend deps…"
+    "$VENV/bin/pip" install -q -r "$REPO_ROOT/server/requirements.txt" \
+        || die "pip install failed" "Check server/requirements.txt and the output above"
     ok "backend venv ready ($VENV)"
 }
 
@@ -227,9 +228,9 @@ prompt_api_key() {
 cmd_start() {
     confirm_proceed
     preflight
+    prompt_api_key
     install_app
     print_sample_data_hint
-    prompt_api_key
     ensure_venv
     trap cleanup INT TERM EXIT
     start_uvicorn
