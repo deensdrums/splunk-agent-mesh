@@ -208,11 +208,28 @@ confirm_proceed() {
     fi
 }
 
+prompt_api_key() {
+    if [ -n "${AGENT_MESH_API_KEY:-}" ]; then
+        ok "AGENT_MESH_API_KEY set (from environment)"
+        return
+    fi
+    info "LLM configuration (Anthropic)"
+    printf '  %s?%s  Enter your Anthropic API key (press Enter to skip): ' "$C_YEL" "$C_RESET"
+    read -r api_key
+    if [ -n "$api_key" ]; then
+        export AGENT_MESH_API_KEY="$api_key"
+        ok "AGENT_MESH_API_KEY set"
+    else
+        warn "No API key provided — live investigations will not be available."
+    fi
+}
+
 cmd_start() {
     confirm_proceed
     preflight
     install_app
     print_sample_data_hint
+    prompt_api_key
     ensure_venv
     trap cleanup INT TERM EXIT
     start_uvicorn
