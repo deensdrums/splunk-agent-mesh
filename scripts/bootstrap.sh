@@ -107,7 +107,11 @@ install_app() {
     tar xzf "$APP_TGZ" -C "$SPLUNK_HOME/etc/apps/" \
         || die "Failed to extract app.tgz" "Check permissions on ${SPLUNK_HOME}/etc/apps/"
     ok "app installed to ${SPLUNK_HOME}/etc/apps/${SPLUNK_APP_ID}"
-    warn "Restart Splunk so it loads the app: ${SPLUNK_HOME}/bin/splunk restart"
+
+    info "Restarting Splunk…"
+    "$SPLUNK_HOME/bin/splunk" restart \
+        || die "Splunk restart failed" "Try manually: ${SPLUNK_HOME}/bin/splunk restart"
+    ok "Splunk restarted"
 }
 
 # ---- dependency setup ------------------------------------------------------
@@ -190,7 +194,22 @@ EOF
 }
 
 # ---- commands --------------------------------------------------------------
+confirm_proceed() {
+    warn "This script will install the Splunk app and restart Splunk."
+    if [ -t 0 ]; then
+        printf '  %s?%s  Continue? [y/N]: ' "$C_YEL" "$C_RESET"
+        read -r answer
+        case "$answer" in
+            [yY]) ;;
+            *) info "Aborted."; exit 0 ;;
+        esac
+    else
+        die "Non-interactive mode — pass confirmation via environment or run interactively"
+    fi
+}
+
 cmd_start() {
+    confirm_proceed
     preflight
     install_app
     print_sample_data_hint
