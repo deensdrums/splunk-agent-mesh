@@ -1,48 +1,48 @@
-# scripts/bootstrap.sh — one-command demo bootstrap
+# scripts/bootstrap.sh — one-command app install + sidecar
 
-A single command that preflights prerequisites, starts the app, health-checks
-it, and prints the URL to open. See `docs/DEMO_RUNTIME.md` for the runtime
-decision this implements (DEMO-002).
+Installs the pre-built Splunk app from `target/app.tgz`, sets up the Python
+backend, and starts the uvicorn sidecar.
 
-## TL;DR (judges)
-
-From a clean checkout, on macOS/Linux:
+## Quick start
 
 ```bash
 ./scripts/bootstrap.sh
 ```
 
-That runs **demo mode**: it starts the backend and a standalone UI, then prints
-`http://localhost:8080`. Open it and click **"Run Demo Investigation"** — no Splunk, no LLM key, no
-tokens required. Press **Ctrl-C** to stop.
+The script will prompt for `SPLUNK_HOME` if it is not already set, extract the
+app into `$SPLUNK_HOME/etc/apps/splunk-agent-mesh`, create a Python venv, and
+start the backend sidecar on `:8765`. Press **Ctrl-C** to stop.
 
-## Modes
+After the script starts, **restart Splunk** so it loads the app, then open
+`http://localhost:8000/en-US/app/splunk-agent-mesh` → Investigations.
+
+## Commands
 
 | Command | What it does |
 |---|---|
-| `./scripts/bootstrap.sh` or `… demo` | **Tier 1.** uvicorn (`:8765`) + standalone UI (`:8080`). No Splunk, no key. The deterministic demo. |
-| `./scripts/bootstrap.sh full` | **Tier 2.** Builds + links the Splunk app, starts uvicorn for live LLM + delegated Splunk search, prints the Splunk Web URL. Requires an existing Splunk and an LLM key. |
+| `./scripts/bootstrap.sh` | Install app + start uvicorn sidecar. |
 | `./scripts/bootstrap.sh check` | Run preflight only and exit (no processes started). |
 | `./scripts/bootstrap.sh stop` | Stop whatever a previous run started. |
 | `./scripts/bootstrap.sh --help` | Usage. |
 
 ## Prerequisites
 
-Both modes: **Node ≥ 22, Yarn, Python ≥ 3.11, curl.** The script creates the
-backend venv and installs JS deps on first run if needed.
+- **Python ≥ 3.11, curl** — the script creates the backend venv on first run.
+- **Splunk** installed locally — the script validates `$SPLUNK_HOME/bin/splunk`.
+- **`target/app.tgz`** present in the repo root (pre-bundled or built via
+  `yarn build`).
 
-`full` mode additionally requires:
-- `AGENT_MESH_API_KEY` exported (the LLM provider key).
-- `SPLUNK_HOME` exported (to link the app).
-- A reachable Splunk REST endpoint (`SPLUNK_HOST`, default
-  `https://localhost:8089`).
-- After linking, **restart Splunk** so it loads the app + the `agent_mesh_bridge`
-  REST endpoint, and load the sample data (the script prints the SPL).
+Optional environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `SPLUNK_HOME` | Path to your Splunk install. Prompted interactively if unset. |
+| `AGENT_MESH_API_KEY` | LLM provider key for live investigations. |
+| `SPLUNK_HOST` | Splunk REST URL (default `https://localhost:8089`). |
 
 The sidecar runs with `AGENT_MESH_SETTINGS_STORE=dev` and
-`AGENT_MESH_CONF_SOURCE=file`, and **`SPLUNK_TOKEN` is explicitly unset** for the
-backend process — searches use your delegated Splunk Web session, not a service
-token (see `docs/DEMO_RUNTIME.md`).
+`AGENT_MESH_CONF_SOURCE=file`, and **`SPLUNK_TOKEN` is explicitly unset** —
+searches use your delegated Splunk Web session, not a service token.
 
 ## Shutdown and rerun
 
@@ -55,14 +55,11 @@ token (see `docs/DEMO_RUNTIME.md`).
 
 Runtime logs and PID files are written to `.bootstrap/` (gitignored):
 
-- `.bootstrap/uvicorn.log` — backend
-- `.bootstrap/ui.log` — standalone UI (demo mode)
-
-Preflight failures name the missing prerequisite and the fix. Common ones:
+- `.bootstrap/uvicorn.log` — backend sidecar
 
 | Symptom | Fix |
 |---|---|
-| `port 8765/8080 already in use` | `./scripts/bootstrap.sh stop`, or stop the other process. |
-| `AGENT_MESH_API_KEY is not set` (full) | `export AGENT_MESH_API_KEY=<key>` before `full`. |
-| `Splunk REST not reachable` (full) | Start Splunk, or set `SPLUNK_HOST=https://<host>:8089`. |
+| `port 8765 already in use` | `./scripts/bootstrap.sh stop`, or stop the other process. |
+| `Splunk not found` | Install Splunk, or set `SPLUNK_HOME` correctly. |
+| `app.tgz not found` | Run `yarn build` first, or ensure `target/app.tgz` is present. |
 | backend not healthy | Inspect `.bootstrap/uvicorn.log`. |
