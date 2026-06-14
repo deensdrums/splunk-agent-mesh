@@ -3,10 +3,9 @@ import styled from 'styled-components';
 import { variables } from '@splunk/themes';
 import Button from '@splunk/react-ui/Button';
 import Text from '@splunk/react-ui/Text';
-import Select from '@splunk/react-ui/Select';
 import Message from '@splunk/react-ui/Message';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
-import { LLMProvider, LLMSettings } from '../types';
+import { LLMSettings } from '../types';
 import { apiClient } from '../services/apiClient';
 
 const Card = styled.div`
@@ -82,23 +81,6 @@ const ModelMeta = styled.div`
     line-height: 1.5;
 `;
 
-const SecurityNote = styled.div`
-    margin-top: ${variables.spacingMedium};
-    padding: ${variables.spacingSmall} ${variables.spacingMedium};
-    background: ${variables.backgroundColorSection};
-    border-radius: 3px;
-    font-size: ${variables.fontSizeSmall};
-    color: ${variables.contentColorMuted};
-    border-left: 3px solid ${variables.accentColorL10};
-    line-height: 1.5;
-`;
-
-const Divider = styled.hr`
-    border: none;
-    border-top: 1px solid ${variables.borderColor};
-    margin: ${variables.spacingLarge} 0;
-`;
-
 const MessageWrapper = styled.div`
     margin-top: ${variables.spacingMedium};
 `;
@@ -107,32 +89,10 @@ const MessageWrapperSmall = styled.div`
     margin-top: ${variables.spacingSmall};
 `;
 
-const CredentialStorageInfo = styled.div`
-    font-size: ${variables.fontSizeSmall};
-    color: ${variables.contentColorMuted};
-    line-height: 1.6;
-`;
-
-const PROVIDER_LABELS: Record<LLMProvider, string> = {
-    anthropic: 'Anthropic Claude',
-    openrouter: 'OpenRouter',
-    openai_compatible: 'Custom OpenAI-compatible',
-};
-
-const DEFAULT_MODELS: Record<LLMProvider, string> = {
-    anthropic: 'claude-sonnet-4-6',
-    openrouter: 'anthropic/claude-sonnet-4-6',
-    openai_compatible: 'gpt-4o',
-};
-
 const SettingsPage: React.FC = () => {
-    const [provider, setProvider] = useState<LLMProvider>('anthropic');
-    const [baseUrl, setBaseUrl] = useState('');
-    const [legacyProviderModel, setLegacyProviderModel] = useState(DEFAULT_MODELS.anthropic);
     const [effectiveModel, setEffectiveModel] = useState<LLMSettings['effective_model']>();
     const [apiKey, setApiKey] = useState('');
     const [keyConfigured, setKeyConfigured] = useState(false);
-    const [storageBackend, setStorageBackend] = useState<string | undefined>();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [testing, setTesting] = useState(false);
@@ -143,12 +103,8 @@ const SettingsPage: React.FC = () => {
         apiClient
             .getSettings()
             .then((s: LLMSettings) => {
-                setProvider(s.provider);
-                setLegacyProviderModel(s.model || DEFAULT_MODELS[s.provider]);
                 setEffectiveModel(s.effective_model);
-                setBaseUrl(s.base_url || '');
                 setKeyConfigured(s.api_key_configured);
-                setStorageBackend(s.storage_backend);
                 setLoading(false);
             })
             .catch(() => {
@@ -156,22 +112,12 @@ const SettingsPage: React.FC = () => {
             });
     }, []);
 
-    const usingSplunkStore = storageBackend === 'SplunkSecureSettingsStore';
-
-    const handleProviderChange = (_e: unknown, { value }: { value: string | number | boolean }) => {
-        const p = String(value) as LLMProvider;
-        setProvider(p);
-        setLegacyProviderModel(DEFAULT_MODELS[p]);
-        if (p !== 'openai_compatible') {setBaseUrl('');}
-    };
-
     const handleSave = async () => {
         setSaving(true);
         setSaveMessage(null);
         try {
             const res = await apiClient.saveSettings({
-                provider,
-                base_url: baseUrl || undefined,
+                provider: 'anthropic',
                 api_key: apiKey || undefined,
             });
             setKeyConfigured(res.api_key_configured);
@@ -216,56 +162,7 @@ const SettingsPage: React.FC = () => {
 
     return (
         <Card>
-            <SectionTitle>LLM Provider Settings</SectionTitle>
-
-            <FieldGroup>
-                <FieldLabel>Provider</FieldLabel>
-                <Select value={provider} onChange={handleProviderChange}>
-                    <Select.Option label={PROVIDER_LABELS.anthropic} value="anthropic" />
-                    <Select.Option label={PROVIDER_LABELS.openrouter} value="openrouter" />
-                    <Select.Option label={PROVIDER_LABELS.openai_compatible} value="openai_compatible" />
-                </Select>
-            </FieldGroup>
-
-            {provider === 'openai_compatible' && (
-                <FieldGroup>
-                    <FieldLabel>Base URL</FieldLabel>
-                    <Text
-                        value={baseUrl}
-                        onChange={(_e: unknown, { value }: { value: string }) => setBaseUrl(value)}
-                        placeholder="https://your-api-endpoint/v1"
-                    />
-                    <FieldHint>OpenAI-compatible endpoint (e.g., local LLM, Azure OpenAI, etc.)</FieldHint>
-                </FieldGroup>
-            )}
-
-            <FieldGroup>
-                <FieldLabel>Effective Harness Model</FieldLabel>
-                <ReadOnlyModelPanel>
-                    <ModelValue>
-                        {effectiveModel?.model || 'No active model configured'}
-                    </ModelValue>
-                    <ModelMeta>
-                        Source: <code>agents.conf</code>
-                        {effectiveModel?.conf_source && <> ({effectiveModel.conf_source})</>}
-                        {effectiveModel?.agent_name && (
-                            <>
-                                {' '}· Agent: {effectiveModel.agent_name}
-                                {effectiveModel.agent_id ? ` (${effectiveModel.agent_id})` : ''}
-                            </>
-                        )}
-                    </ModelMeta>
-                    <ModelMeta>
-                        Read-only in this UI. Change the model in the active agent stanza; subsequent
-                        runs use that configured value.
-                    </ModelMeta>
-                    {effectiveModel?.error && <ModelMeta>{effectiveModel.error}</ModelMeta>}
-                </ReadOnlyModelPanel>
-                <FieldHint>
-                    Provider/API-key settings are separate from model selection. Legacy provider default:{' '}
-                    <code>{legacyProviderModel}</code>.
-                </FieldHint>
-            </FieldGroup>
+            <SectionTitle>Anthropic API Key</SectionTitle>
 
             <FieldGroup>
                 <FieldLabel>API Key</FieldLabel>
@@ -273,38 +170,38 @@ const SettingsPage: React.FC = () => {
                     value={apiKey}
                     onChange={(_e: unknown, { value }: { value: string }) => setApiKey(value)}
                     placeholder={
-                        keyConfigured ? '••••••••••••  (key is configured — enter new key to replace)' : 'Enter API key'
+                        keyConfigured
+                            ? '••••••••••••  (key is configured — enter new key to replace)'
+                            : 'sk-ant-...'
                     }
                     type="password"
                     canClear
                 />
                 <FieldHint>
-                    Current status:{' '}
+                    Enter your Anthropic API key. You can create one at{' '}
+                    <code>console.anthropic.com</code>.
+                    {' '}Current status:{' '}
                     <KeyStatusBadge configured={keyConfigured}>
                         {keyConfigured ? 'Configured' : 'Not configured'}
                     </KeyStatusBadge>
                 </FieldHint>
             </FieldGroup>
 
-            <SecurityNote>
-                {usingSplunkStore ? (
-                    <>
-                        <strong>Active storage:</strong> Splunk Passwords API (encrypted at rest).
-                        Keys are stored in the <code>agent_mesh</code> realm of the
-                        <code> splunk-agent-mesh</code> app and never returned to the browser.
-                    </>
-                ) : (
-                    <>
-                        <strong>Active storage:</strong> Dev mode (local file). The Splunk
-                        Passwords API is used only when <code>AGENT_MESH_SETTINGS_STORE=splunk</code>
-                        {' '}is set on the backend; otherwise plaintext key persistence is refused unless
-                        <code> AGENT_MESH_DEV_MODE=1</code>.
-                    </>
-                )}
-            </SecurityNote>
+            <FieldGroup>
+                <FieldLabel>Active Model</FieldLabel>
+                <ReadOnlyModelPanel>
+                    <ModelValue>
+                        {effectiveModel?.model || 'No active model configured'}
+                    </ModelValue>
+                    <ModelMeta>
+                        Source: <code>agents.conf</code>
+                        {effectiveModel?.conf_source && <> ({effectiveModel.conf_source})</>}
+                    </ModelMeta>
+                </ReadOnlyModelPanel>
+            </FieldGroup>
 
             <ButtonRow>
-                <Button label="Save" appearance="primary" disabled={saving} onClick={handleSave} />
+                <Button label="Save" appearance="primary" disabled={saving || !apiKey} onClick={handleSave} />
                 <Button
                     label="Test Connection"
                     appearance="secondary"
@@ -334,30 +231,6 @@ const SettingsPage: React.FC = () => {
                     </Message>
                 </MessageWrapperSmall>
             )}
-
-            <Divider />
-
-            <SectionTitle>About Credential Storage</SectionTitle>
-            <CredentialStorageInfo>
-                <p>
-                    The backend uses Splunk&apos;s encrypted Passwords REST API
-                    (<code>/servicesNS/nobody/splunk-agent-mesh/storage/passwords</code>) only when
-                    <code> AGENT_MESH_SETTINGS_STORE=splunk</code> is set explicitly and a
-                    <code> SPLUNK_TOKEN</code> is available on the backend. The
-                    key is stored under realm <code>agent_mesh</code>, name <code>llm_api_key</code>,
-                    encrypted at rest by Splunk.
-                </p>
-                <p>
-                    When no <code>SPLUNK_TOKEN</code> is set, the backend falls back to a local
-                    dev store that reads from the <code>AGENT_MESH_API_KEY</code> environment
-                    variable. Plaintext disk persistence is refused unless
-                    <code> AGENT_MESH_DEV_MODE=1</code> is explicitly set.
-                </p>
-                <p>
-                    The API key is never logged, never included in HTTP responses, and never
-                    stored in browser localStorage or sessionStorage.
-                </p>
-            </CredentialStorageInfo>
         </Card>
     );
 };

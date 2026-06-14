@@ -149,6 +149,7 @@ start_uvicorn() {
     ( cd "$REPO_ROOT/server" && \
       env -u SPLUNK_TOKEN \
           AGENT_MESH_SETTINGS_STORE=dev \
+          AGENT_MESH_DEV_MODE=1 \
           AGENT_MESH_CONF_SOURCE=file \
           "$VENV/bin/uvicorn" agent_mesh.app:app --port "$UVICORN_PORT" \
           >"$RUN_DIR/uvicorn.log" 2>&1 ) &
