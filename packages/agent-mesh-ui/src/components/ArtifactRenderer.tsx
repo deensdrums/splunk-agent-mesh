@@ -223,6 +223,10 @@ function renderViz(artifact: SearchArtifact, fields: string[], rows: Record<stri
                             requestParams: {},
                         },
                     }}
+                    xField={fields[0]}
+                    yFields={fields.slice(1)}
+                    x={columnData.columns[0]}
+                    y={columnData.columns.slice(1)}
                 />
             </div>
         );
