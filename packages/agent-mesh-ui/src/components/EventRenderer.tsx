@@ -86,34 +86,74 @@ const PayloadList = styled.dl`
     }
 `;
 
-const LabelPanel = styled.div<{ tone: string }>`
+const ALLOWED_LABELS = [
+    'true_positive',
+    'false_positive',
+    'benign_true_positive',
+    'needs_review',
+    'insufficient_evidence',
+] as const;
+
+const LabelPanel = styled.div`
     margin-top: ${variables.spacingSmall};
-    padding: ${variables.spacingSmall};
     background: ${variables.backgroundColorSidebar};
-    border-left: 3px solid ${({ tone }) => tone};
+    border-radius: 4px;
+    border: 1px solid ${variables.borderColor};
+    overflow: hidden;
 `;
 
-const LabelHeader = styled.div`
+const VerdictStrip = styled.div<{ tone: string }>`
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: ${variables.spacingSmall};
-    margin-bottom: ${variables.spacingXSmall};
+    gap: ${variables.spacingSmall} ${variables.spacingMedium};
+    padding: ${variables.spacingSmall} ${variables.spacingMedium};
+    background: ${({ tone }) => `${tone}18`};
+    border-bottom: 2px solid ${({ tone }) => tone};
 `;
 
-const LabelBadge = styled.span<{ tone: string }>`
-    display: inline-flex;
-    align-items: center;
-    color: ${({ tone }) => tone};
-    font-size: ${variables.fontSizeSmall};
+const VerdictLabel = styled.span<{ tone: string }>`
+    font-size: ${variables.fontSizeLarge};
     font-weight: ${variables.fontWeightSemiBold};
-    letter-spacing: 0.04em;
+    color: ${({ tone }) => tone};
+    letter-spacing: 0.03em;
     text-transform: uppercase;
 `;
 
-const LabelMeta = styled.span`
-    color: ${variables.contentColorMuted};
+const VerdictMeta = styled.span`
     font-size: ${variables.fontSizeSmall};
+    color: ${variables.contentColorMuted};
+`;
+
+const LabelChips = styled.div`
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: ${variables.spacingSmall} ${variables.spacingMedium};
+`;
+
+const LabelChip = styled.span<{ $active: boolean; tone: string }>`
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: ${variables.fontWeightSemiBold};
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid ${({ $active, tone }) => ($active ? tone : variables.borderColor)};
+    background: ${({ $active, tone }) => ($active ? `${tone}22` : 'transparent')};
+    color: ${({ $active, tone }) => ($active ? tone : variables.contentColorMuted)};
+    opacity: ${({ $active }) => ($active ? 1 : 0.5)};
+`;
+
+const LabelBody = styled.div`
+    padding: ${variables.spacingSmall} ${variables.spacingMedium};
+`;
+
+const Rationale = styled.div`
+    color: ${variables.contentColorDefault};
+    font-size: ${variables.fontSizeSmall};
+    line-height: 1.5;
 `;
 
 const LabelSection = styled.div`
@@ -210,55 +250,70 @@ const PayloadFields: React.FC<{ payload: Record<string, unknown>; skip?: string[
 const LabelFinding: React.FC<{ payload: Record<string, unknown> }> = ({ payload }) => {
     const tone = labelTone(payload.label, payload.severity);
     const confidence = formatConfidence(payload.confidence);
+    const selectedLabel = String(payload.label || '').toLowerCase();
     const counterEvidence = Array.isArray(payload.counter_evidence) ? payload.counter_evidence : [];
     const rubricScores = payload.rubric_scores && typeof payload.rubric_scores === 'object'
         ? Object.entries(payload.rubric_scores as Record<string, unknown>).filter(([, value]) => isScalar(value))
         : [];
 
     return (
-        <LabelPanel tone={tone} data-testid="label-finding">
-            <LabelHeader>
-                <LabelBadge tone={tone}>{titleCase(payload.label) || 'Unlabeled'}</LabelBadge>
-                {typeof payload.severity === 'string' && <LabelMeta>Severity: {titleCase(payload.severity)}</LabelMeta>}
-                {confidence && <LabelMeta>{confidence}</LabelMeta>}
-            </LabelHeader>
+        <LabelPanel data-testid="label-finding">
+            <VerdictStrip tone={tone}>
+                <VerdictLabel tone={tone}>{titleCase(payload.label) || 'Unlabeled'}</VerdictLabel>
+                {typeof payload.severity === 'string' && <VerdictMeta>Severity: {titleCase(payload.severity)}</VerdictMeta>}
+                {confidence && <VerdictMeta>{confidence}</VerdictMeta>}
+            </VerdictStrip>
 
-            {typeof payload.rationale === 'string' && <EventText>{payload.rationale}</EventText>}
+            <LabelChips>
+                {ALLOWED_LABELS.map((l) => (
+                    <LabelChip key={l} $active={l === selectedLabel} tone={labelTone(l, null)}>
+                        {titleCase(l)}
+                    </LabelChip>
+                ))}
+            </LabelChips>
+
+            {typeof payload.rationale === 'string' && (
+                <LabelBody>
+                    <Rationale>{payload.rationale}</Rationale>
+                </LabelBody>
+            )}
 
             {(typeof payload.recommended_disposition === 'string' || counterEvidence.length > 0 || rubricScores.length > 0) && (
-                <CollapsiblePanel title="See details" defaultOpen={false} appearance="subtle">
-                    {typeof payload.recommended_disposition === 'string' && (
-                        <LabelSection>
-                            <LabelSectionTitle>Recommended disposition</LabelSectionTitle>
-                            <EventText>{payload.recommended_disposition}</EventText>
-                        </LabelSection>
-                    )}
+                <LabelBody>
+                    <CollapsiblePanel title="See details" defaultOpen={false} appearance="subtle">
+                        {typeof payload.recommended_disposition === 'string' && (
+                            <LabelSection>
+                                <LabelSectionTitle>Recommended disposition</LabelSectionTitle>
+                                <Rationale>{payload.recommended_disposition}</Rationale>
+                            </LabelSection>
+                        )}
 
-                    {counterEvidence.length > 0 && (
-                        <LabelSection>
-                            <LabelSectionTitle>Counter-evidence</LabelSectionTitle>
-                            <CompactList>
-                                {counterEvidence.map((item) => (
-                                    <li key={String(item)}>{String(item)}</li>
-                                ))}
-                            </CompactList>
-                        </LabelSection>
-                    )}
+                        {counterEvidence.length > 0 && (
+                            <LabelSection>
+                                <LabelSectionTitle>Counter-evidence</LabelSectionTitle>
+                                <CompactList>
+                                    {counterEvidence.map((item) => (
+                                        <li key={String(item)}>{String(item)}</li>
+                                    ))}
+                                </CompactList>
+                            </LabelSection>
+                        )}
 
-                    {rubricScores.length > 0 && (
-                        <LabelSection>
-                            <LabelSectionTitle>Rubric scores</LabelSectionTitle>
-                            <PayloadList>
-                                {rubricScores.map(([key, value]) => (
-                                    <React.Fragment key={key}>
-                                        <dt>{key}</dt>
-                                        <dd>{String(value)}</dd>
-                                    </React.Fragment>
-                                ))}
-                            </PayloadList>
-                        </LabelSection>
-                    )}
-                </CollapsiblePanel>
+                        {rubricScores.length > 0 && (
+                            <LabelSection>
+                                <LabelSectionTitle>Rubric scores</LabelSectionTitle>
+                                <PayloadList>
+                                    {rubricScores.map(([key, value]) => (
+                                        <React.Fragment key={key}>
+                                            <dt>{key}</dt>
+                                            <dd>{String(value)}</dd>
+                                        </React.Fragment>
+                                    ))}
+                                </PayloadList>
+                            </LabelSection>
+                        )}
+                    </CollapsiblePanel>
+                </LabelBody>
             )}
         </LabelPanel>
     );
