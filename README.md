@@ -119,9 +119,34 @@ docs/
 
 ## Setup
 
-The project supports **two tiers**. Tier 1 (demo) is the default and requires
-nothing beyond the repo and standard tooling. Tier 2 (full/live) connects to an
-existing Splunk Enterprise instance with a real LLM provider.
+The project supports **three deployment options**. The Docker container is the
+easiest way to get a fully working demo with Splunk and sample data. The
+bootstrap script offers two tiers: Tier 1 (demo, no Splunk) and Tier 2
+(full/live, existing Splunk instance).
+
+### Quick start — Docker (recommended for demos)
+
+Run a self-contained Splunk + Agent Mesh instance with pre-loaded sample data:
+
+```bash
+git clone <repo> && cd splunk-agent-mesh
+docker build -t splunk-agent-mesh .
+docker run -d -p 8000:8000 -p 8765:8765 \
+  -e SPLUNK_PASSWORD=changeme123 \
+  --name agent-mesh splunk-agent-mesh
+docker logs -f agent-mesh   # wait for "Splunk Agent Mesh is ready!" banner
+```
+
+Once the ready banner appears:
+
+1. Open **http://localhost:8000/en-US/app/splunk-agent-mesh/Investigations**
+2. Log in with `admin` / `changeme123` (or whatever you set `SPLUNK_PASSWORD` to)
+3. Click the **gear icon** and enter your Anthropic API key
+4. Start an investigation — or click **"Run Demo Investigation"** to try it without a key
+
+The container automatically builds the frontend, installs the Splunk app,
+creates demo indexes, and ingests all sample data on first boot. First startup
+takes a couple of minutes while Splunk provisions.
 
 ### Quick start — Tier 1 demo (no Splunk, no LLM key)
 
