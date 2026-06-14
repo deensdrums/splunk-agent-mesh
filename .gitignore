@@ -22,6 +22,9 @@ AGENT_MESH_API_KEY
 stage/
 packages/*/stage/
 
+# build artifact output
+target/
+
 # bootstrap script runtime (PIDs + logs)
 .bootstrap/
 
