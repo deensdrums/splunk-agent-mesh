@@ -481,7 +481,7 @@ const AgentTranscript: React.FC<{
         );
     } else {
         let searchIndex = 0;
-        const visible = events!.slice(0, revealed);
+        const visible = events!.slice(0, revealed).filter((e) => e.type !== 'result_summary');
         const rendered = visible.map((event, idx) => {
             let artifact: Artifact | undefined;
             if (event.type === 'splunk_search') {
