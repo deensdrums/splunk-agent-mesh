@@ -1,10 +1,10 @@
 import React from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
+import Button from '@splunk/react-ui/Button';
 import CollapsiblePanel from '@splunk/react-ui/CollapsiblePanel';
 import { AgentEvent, Artifact } from '../types';
 import ArtifactRenderer from './ArtifactRenderer';
-import MarkdownView from './MarkdownView';
 
 /**
  * Renders one structured threat-hunter event. The harness guarantees every
@@ -19,6 +19,7 @@ interface Props {
     event: AgentEvent;
     artifact?: Artifact;
     isCurrent?: boolean;
+    onViewSummary?: (summary: string, actions: unknown[]) => void;
 }
 
 const EventCard = styled.div<{ accent: string; $isCurrent: boolean }>`
@@ -129,11 +130,6 @@ const LabelSectionTitle = styled.div`
 
 const CompactList = styled.ul`
     margin: ${variables.spacingXSmall} 0 0;
-    padding-left: 1.4em;
-`;
-
-const ActionsList = styled.ol`
-    margin: ${variables.spacingSmall} 0 0;
     padding-left: 1.4em;
 `;
 
@@ -268,7 +264,11 @@ const LabelFinding: React.FC<{ payload: Record<string, unknown> }> = ({ payload 
     );
 };
 
-const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false }) => {
+const SummaryButtonWrapper = styled.div`
+    margin-top: ${variables.spacingSmall};
+`;
+
+const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false, onViewSummary }) => {
     const accent = TYPE_ACCENTS[event.type];
     const payload = event.payload || {};
     const labelerFinding = isLabelerFinding(event, payload);
@@ -300,17 +300,17 @@ const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false }) 
                 </CollapsiblePanel>
             )}
 
-            {event.type === 'final' && (
-                <>
-                    {typeof payload.summary === 'string' && <MarkdownView content={String(payload.summary)} />}
-                    {Array.isArray(payload.recommended_actions) && (
-                        <ActionsList>
-                            {(payload.recommended_actions as unknown[]).map((action) => (
-                                <li key={String(action)}>{String(action)}</li>
-                            ))}
-                        </ActionsList>
-                    )}
-                </>
+            {event.type === 'final' && typeof payload.summary === 'string' && onViewSummary && (
+                <SummaryButtonWrapper>
+                    <Button
+                        appearance="primary"
+                        label="View Executive Summary"
+                        onClick={() => onViewSummary(
+                            String(payload.summary),
+                            Array.isArray(payload.recommended_actions) ? payload.recommended_actions as unknown[] : [],
+                        )}
+                    />
+                </SummaryButtonWrapper>
             )}
         </EventCard>
     );

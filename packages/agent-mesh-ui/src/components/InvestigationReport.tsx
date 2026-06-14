@@ -1,7 +1,9 @@
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { variables } from '@splunk/themes';
+import Button from '@splunk/react-ui/Button';
 import Message from '@splunk/react-ui/Message';
+import SidePanel from '@splunk/react-ui/SidePanel';
 import WaitSpinner from '@splunk/react-ui/WaitSpinner';
 import {
     AgentDescriptor,
@@ -283,6 +285,47 @@ const StartingState = styled.div`
     font-size: ${variables.fontSizeLarge};
 `;
 
+const DrawerInner = styled.div`
+    width: 560px;
+    max-width: 90vw;
+    padding: ${variables.spacingLarge} ${variables.spacingXLarge};
+    box-sizing: border-box;
+`;
+
+const DrawerHeader = styled.div`
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: ${variables.spacingMedium};
+    padding-bottom: ${variables.spacingSmall};
+    border-bottom: 1px solid ${variables.borderColor};
+`;
+
+const DrawerTitle = styled.h2`
+    margin: 0;
+    font-size: ${variables.fontSizeXXLarge};
+    font-weight: ${variables.fontWeightSemiBold};
+    color: ${variables.contentColorActive};
+`;
+
+const DrawerActions = styled.ol`
+    margin: ${variables.spacingMedium} 0 0;
+    padding-left: 1.4em;
+    color: ${variables.contentColorDefault};
+    line-height: 1.55;
+
+    li {
+        margin-bottom: ${variables.spacingSmall};
+    }
+`;
+
+const DrawerActionsHeading = styled.h3`
+    margin: ${variables.spacingLarge} 0 ${variables.spacingSmall};
+    font-size: ${variables.fontSizeLarge};
+    font-weight: ${variables.fontWeightSemiBold};
+    color: ${variables.contentColorActive};
+`;
+
 // Authoritative labels when the backend reports its phase. Preferred over the
 // client-side inference below, since the harness knows exactly what it's doing —
 // including the sub-agent ("delegating") window the UI can't otherwise observe.
@@ -344,7 +387,8 @@ const AgentTranscript: React.FC<{
     running: boolean;
     resetKey: unknown;
     inputSummary?: React.ReactNode;
-}> = ({ agentName, output, artifacts, investigationId, investigationStatus, running, resetKey, inputSummary }) => {
+    onViewSummary: (summary: string, actions: unknown[]) => void;
+}> = ({ agentName, output, artifacts, investigationId, investigationStatus, running, resetKey, inputSummary, onViewSummary }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const contentRef = useRef<HTMLDivElement>(null);
     const followBottom = useRef(true);
@@ -447,7 +491,7 @@ const AgentTranscript: React.FC<{
             return (
                 // eslint-disable-next-line react/no-array-index-key
                 <RevealItem key={`event-${idx}`}>
-                    <EventRenderer event={event} artifact={artifact} isCurrent={idx === visible.length - 1} />
+                    <EventRenderer event={event} artifact={artifact} isCurrent={idx === visible.length - 1} onViewSummary={onViewSummary} />
                 </RevealItem>
             );
         });
@@ -518,6 +562,18 @@ const AgentTranscript: React.FC<{
 };
 
 const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, inputSummary }) => {
+    const [summaryOpen, setSummaryOpen] = useState(false);
+    const [summaryContent, setSummaryContent] = useState<{ summary: string; actions: unknown[] }>({ summary: '', actions: [] });
+
+    const handleViewSummary = useCallback((summary: string, actions: unknown[]) => {
+        setSummaryContent({ summary, actions });
+        setSummaryOpen(true);
+    }, []);
+
+    const handleCloseSummary = useCallback(() => {
+        setSummaryOpen(false);
+    }, []);
+
     if (!result && !running) {
         return (
             <Placeholder>
@@ -589,9 +645,36 @@ const InvestigationReport: React.FC<Props> = ({ descriptors, result, running, in
                         running={running}
                         resetKey={result.id}
                         inputSummary={inputSummary}
+                        onViewSummary={handleViewSummary}
                     />
                 );
             })}
+
+            <SidePanel
+                open={summaryOpen}
+                dockPosition="right"
+                useLayerForClickAway
+                onRequestClose={handleCloseSummary}
+                innerStyle={{ overflow: 'auto' }}
+            >
+                <DrawerInner>
+                    <DrawerHeader>
+                        <DrawerTitle>Executive Summary</DrawerTitle>
+                        <Button appearance="secondary" label="Close" onClick={handleCloseSummary} />
+                    </DrawerHeader>
+                    <MarkdownView content={summaryContent.summary} />
+                    {summaryContent.actions.length > 0 && (
+                        <>
+                            <DrawerActionsHeading>Recommended Actions</DrawerActionsHeading>
+                            <DrawerActions>
+                                {summaryContent.actions.map((action) => (
+                                    <li key={String(action)}>{String(action)}</li>
+                                ))}
+                            </DrawerActions>
+                        </>
+                    )}
+                </DrawerInner>
+            </SidePanel>
         </Container>
     );
 };
