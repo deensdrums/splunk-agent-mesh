@@ -116,12 +116,13 @@ install_app() {
 
 # ---- dependency setup ------------------------------------------------------
 ensure_venv() {
-    if [ ! -x "$VENV/bin/uvicorn" ]; then
-        info "Creating Python venv + installing backend deps…"
+    if [ ! -d "$VENV" ]; then
+        info "Creating Python venv…"
         python3 -m venv "$VENV" || die "venv creation failed" "Check your Python install"
-        "$VENV/bin/pip" install -q -r "$REPO_ROOT/server/requirements.txt" \
-            || die "pip install failed" "Check server/requirements.txt and the output above"
     fi
+    info "Installing backend deps…"
+    "$VENV/bin/pip" install -q -r "$REPO_ROOT/server/requirements.txt" \
+        || die "pip install failed" "Check server/requirements.txt and the output above"
     ok "backend venv ready ($VENV)"
 }
 
@@ -208,9 +209,27 @@ confirm_proceed() {
     fi
 }
 
+prompt_api_key() {
+    if [ -n "${AGENT_MESH_API_KEY:-}" ]; then
+        ok "AGENT_MESH_API_KEY set (from environment)"
+        return
+    fi
+    info "LLM configuration (Anthropic)"
+    printf '  %s?%s  Enter your Anthropic API key — input hidden (press Enter to skip): ' "$C_YEL" "$C_RESET"
+    read -rs api_key
+    printf '\n'
+    if [ -n "$api_key" ]; then
+        export AGENT_MESH_API_KEY="$api_key"
+        ok "AGENT_MESH_API_KEY set"
+    else
+        warn "No API key provided — live investigations will not be available."
+    fi
+}
+
 cmd_start() {
     confirm_proceed
     preflight
+    prompt_api_key
     install_app
     print_sample_data_hint
     ensure_venv
