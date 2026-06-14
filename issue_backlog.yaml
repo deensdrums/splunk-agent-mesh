@@ -304,3 +304,60 @@ stories:
   recommendation: Ship with demo path
   status: Done
   reviewer_notes: 'Updated README.md as the primary documentation surface. Credential table now names every env var, its purpose, and its tier requirement; SPLUNK_TOKEN explicitly documented as opt-in-only with three independent feature gates. Auth section restructured into two data planes: browser-side (analyst Splunk Web session for result row polling) and backend-side (uvicorn credential modes with per-operation table). Quick start rewritten as two clearly labeled tiers with Tier 1 demo as the primary path. Demo Mode section updated to explain backend-side paced replay (not a frontend stub). New Investigation History section covers KV Store persistence, sidebar, and URL-addressable sessions. New Known POC Limitations section with six explicit boundaries (loopback-only, ephemeral signing, in-memory state, single-process, per-user-only, no TLS). API table updated with GET /investigations (list) and GET /investigations/{id} (restore). Repo structure updated with new files (HistorySidebar, useInvestigationUrl, collections.conf, durable_investigations.py, security.py, config.py). Aligned docs/SECURE_SETTINGS.md (added two-data-plane intro and POC security boundaries section), docs/ARCHITECTURE.md (updated component hierarchy with sidebar/URL hooks, added durable persistence paragraph, expanded Known risks), docs/DURABLE_INVESTIGATIONS.md (updated status of STATE-003/004, noted REL-001 postponed), scripts/README.md and bootstrap.sh (fixed button label to match UI). Also fixed stale button name in docs/DEMO_STORYBOARD.md. Fresh-checkout walkthrough reviewed for accuracy against actual config.py, bootstrap.sh, and UI implementation.'
+
+- order: 15
+  story_id: UI-004
+  theme: UI Polish
+  story: Collapse detail sections on splunk_search and finding cards
+  description: >-
+    Investigation transcripts get visually busy as the Threat Hunter emits
+    multiple search and finding events. The high-value elements (search
+    explanation text, chart/table visualization, finding title and narrative)
+    should remain visible at a glance, while supplementary details (SPL query,
+    payload metadata fields, labeler rubric tables) should be collapsed behind
+    an expandable panel. This is a rendering-only change in EventRenderer.tsx
+    using the existing @splunk/react-ui CollapsiblePanel component.
+  acceptance_criteria:
+  - >-
+    splunk_search cards: the SPL query block and PayloadFields metadata are
+    wrapped in a CollapsiblePanel with defaultOpen=false and title "See
+    details". The search explanation text (event.text) and the embedded
+    ArtifactRenderer (visualization/chart/table) remain always visible.
+  - >-
+    finding cards (regular, non-labeler): the PayloadFields grid is wrapped
+    in a CollapsiblePanel with defaultOpen=false and title "See details".
+    The finding title and event.text remain always visible.
+  - >-
+    finding cards (labeler): the detail sections of LabelFinding (recommended
+    disposition, counter-evidence, rubric scores) are wrapped in a
+    CollapsiblePanel with defaultOpen=false and title "See details". The
+    label badge, severity, confidence, and rationale remain always visible.
+  - >-
+    CollapsiblePanel uses appearance="subtle" to integrate with the existing
+    card styling. No visual regression on narration, result_summary, handoff,
+    or final cards.
+  - The demo investigation renders correctly with all panels collapsed by default.
+  feasibility: >-
+    High. CollapsiblePanel is already available in @splunk/react-ui (confirmed
+    in node_modules). Changes are contained to EventRenderer.tsx — no new
+    files, no backend changes, no new dependencies. The component API
+    (defaultOpen, title, appearance) maps directly to the requirement.
+  points: 2
+  dependencies: []
+  origin_thought_ids: []
+  recommendation: Do when polishing the demo transcript readability
+  status: Done
+  reviewer_notes: >-
+    Implemented in EventRenderer.tsx. Imported CollapsiblePanel from
+    @splunk/react-ui/CollapsiblePanel. Three collapsible regions added:
+    (1) splunk_search cards — SPL query block and PayloadFields wrapped in
+    CollapsiblePanel below the ArtifactRenderer; search explanation text and
+    visualization remain always visible. (2) Regular finding cards —
+    PayloadFields grid wrapped in CollapsiblePanel; finding title and
+    narrative remain visible. (3) Labeler finding cards — recommended
+    disposition, counter-evidence list, and rubric scores table wrapped in
+    CollapsiblePanel; label badge, severity, confidence, and rationale remain
+    visible. All panels use appearance="subtle" and defaultOpen={false} with
+    title "See details". TypeScript compiles clean. No new files, no backend
+    changes, no new dependencies. Node version on build machine (20.x) prevented
+    full build/test run — requires Node >= 22 to verify in browser.

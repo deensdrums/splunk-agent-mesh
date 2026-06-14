@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import { variables } from '@splunk/themes';
+import CollapsiblePanel from '@splunk/react-ui/CollapsiblePanel';
 import { AgentEvent, Artifact } from '../types';
 import ArtifactRenderer from './ArtifactRenderer';
 import MarkdownView from './MarkdownView';
@@ -228,36 +229,40 @@ const LabelFinding: React.FC<{ payload: Record<string, unknown> }> = ({ payload 
 
             {typeof payload.rationale === 'string' && <EventText>{payload.rationale}</EventText>}
 
-            {typeof payload.recommended_disposition === 'string' && (
-                <LabelSection>
-                    <LabelSectionTitle>Recommended disposition</LabelSectionTitle>
-                    <EventText>{payload.recommended_disposition}</EventText>
-                </LabelSection>
-            )}
+            {(typeof payload.recommended_disposition === 'string' || counterEvidence.length > 0 || rubricScores.length > 0) && (
+                <CollapsiblePanel title="See details" defaultOpen={false} appearance="subtle">
+                    {typeof payload.recommended_disposition === 'string' && (
+                        <LabelSection>
+                            <LabelSectionTitle>Recommended disposition</LabelSectionTitle>
+                            <EventText>{payload.recommended_disposition}</EventText>
+                        </LabelSection>
+                    )}
 
-            {counterEvidence.length > 0 && (
-                <LabelSection>
-                    <LabelSectionTitle>Counter-evidence</LabelSectionTitle>
-                    <CompactList>
-                        {counterEvidence.map((item) => (
-                            <li key={String(item)}>{String(item)}</li>
-                        ))}
-                    </CompactList>
-                </LabelSection>
-            )}
+                    {counterEvidence.length > 0 && (
+                        <LabelSection>
+                            <LabelSectionTitle>Counter-evidence</LabelSectionTitle>
+                            <CompactList>
+                                {counterEvidence.map((item) => (
+                                    <li key={String(item)}>{String(item)}</li>
+                                ))}
+                            </CompactList>
+                        </LabelSection>
+                    )}
 
-            {rubricScores.length > 0 && (
-                <LabelSection>
-                    <LabelSectionTitle>Rubric scores</LabelSectionTitle>
-                    <PayloadList>
-                        {rubricScores.map(([key, value]) => (
-                            <React.Fragment key={key}>
-                                <dt>{key}</dt>
-                                <dd>{String(value)}</dd>
-                            </React.Fragment>
-                        ))}
-                    </PayloadList>
-                </LabelSection>
+                    {rubricScores.length > 0 && (
+                        <LabelSection>
+                            <LabelSectionTitle>Rubric scores</LabelSectionTitle>
+                            <PayloadList>
+                                {rubricScores.map(([key, value]) => (
+                                    <React.Fragment key={key}>
+                                        <dt>{key}</dt>
+                                        <dd>{String(value)}</dd>
+                                    </React.Fragment>
+                                ))}
+                            </PayloadList>
+                        </LabelSection>
+                    )}
+                </CollapsiblePanel>
             )}
         </LabelPanel>
     );
@@ -276,20 +281,24 @@ const EventRenderer: React.FC<Props> = ({ event, artifact, isCurrent = false }) 
             </EventHead>
             <EventText>{event.text}</EventText>
 
+            {event.type === 'splunk_search' && artifact && (
+                <ArtifactRenderer artifact={artifact} embedded />
+            )}
             {event.type === 'splunk_search' && typeof payload.query === 'string' && (
-                <>
+                <CollapsiblePanel title="See details" defaultOpen={false} appearance="subtle">
                     <SplBlock>
                         <code>{String(payload.query)}</code>
                     </SplBlock>
                     <PayloadFields payload={payload} skip={['query']} />
-                </>
-            )}
-            {event.type === 'splunk_search' && artifact && (
-                <ArtifactRenderer artifact={artifact} embedded />
+                </CollapsiblePanel>
             )}
 
             {labelerFinding && <LabelFinding payload={payload} />}
-            {event.type === 'finding' && !labelerFinding && <PayloadFields payload={payload} />}
+            {event.type === 'finding' && !labelerFinding && (
+                <CollapsiblePanel title="See details" defaultOpen={false} appearance="subtle">
+                    <PayloadFields payload={payload} />
+                </CollapsiblePanel>
+            )}
 
             {event.type === 'final' && (
                 <>
