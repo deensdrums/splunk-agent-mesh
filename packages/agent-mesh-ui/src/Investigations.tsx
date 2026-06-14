@@ -127,7 +127,7 @@ const Investigations: React.FC = () => {
                 style={{ width: '720px' }}
             >
                 <StyledModalContent>
-                    <Modal.Header title="Settings" subtitle="Configure the LLM provider used by the harness." />
+                    <Modal.Header title="Settings" subtitle="Configure your Anthropic API key." />
                     <Modal.Body style={{ maxHeight: 'calc(100vh - 220px)', overflowY: 'auto' }}>
                         <SettingsPage />
                     </Modal.Body>
