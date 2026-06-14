@@ -215,8 +215,9 @@ prompt_api_key() {
         return
     fi
     info "LLM configuration (Anthropic)"
-    printf '  %s?%s  Enter your Anthropic API key (press Enter to skip): ' "$C_YEL" "$C_RESET"
-    read -r api_key
+    printf '  %s?%s  Enter your Anthropic API key — input hidden (press Enter to skip): ' "$C_YEL" "$C_RESET"
+    read -rs api_key
+    printf '\n'
     if [ -n "$api_key" ]; then
         export AGENT_MESH_API_KEY="$api_key"
         ok "AGENT_MESH_API_KEY set"
