@@ -1,5 +1,7 @@
 # Splunk Agent Mesh
 
+MIT License.  See ./LICENSE in the root directory of this repository.
+
 **An agentic SOC investigation copilot for Splunk Enterprise.**
 
 The analyst describes an alert; a **Threat Hunter** agent investigates it live —
