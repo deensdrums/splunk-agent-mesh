@@ -15,8 +15,14 @@ RUN yarn install --frozen-lockfile
 # Copy source and build
 COPY babel.config.js ./
 COPY packages/ packages/
+COPY docker/indexes.conf /build/docker/indexes.conf
 
-RUN yarn build
+RUN yarn build && \
+    mkdir -p /tmp/app-repack && \
+    tar xzf /build/target/app.tgz -C /tmp/app-repack/ && \
+    mkdir -p /tmp/app-repack/splunk-agent-mesh/local && \
+    cp /build/docker/indexes.conf /tmp/app-repack/splunk-agent-mesh/local/indexes.conf && \
+    cd /tmp/app-repack && tar czf /build/target/app.tgz splunk-agent-mesh/
 
 
 # ==============================================
@@ -32,8 +38,12 @@ USER root
 RUN mkdir -p /opt/agent-mesh/server \
              /opt/agent-mesh/packages/agent-mesh/src/main/resources/splunk/default
 
-# Copy built app from stage 1
+# Pre-install the Splunk app so it's available on first boot (no restart needed)
 COPY --from=builder /build/target/app.tgz /tmp/app.tgz
+RUN mkdir -p /opt/splunk/etc/apps && \
+    tar xzf /tmp/app.tgz -C /opt/splunk/etc/apps/ && \
+    chown -R splunk:splunk /opt/splunk/etc/apps/splunk-agent-mesh && \
+    rm /tmp/app.tgz
 
 # Copy server code
 COPY server/requirements.txt /opt/agent-mesh/server/
@@ -45,13 +55,15 @@ COPY packages/agent-mesh/src/main/resources/splunk/default/agents.conf \
 
 # Copy Docker support files
 COPY docker/entrypoint.sh /opt/agent-mesh/entrypoint.sh
-COPY docker/indexes.conf /tmp/indexes.conf
 RUN chmod +x /opt/agent-mesh/entrypoint.sh
 
 # Create Python venv and install dependencies (image ships Python 3.13)
 RUN python3 -m venv /opt/agent-mesh/.venv \
     && /opt/agent-mesh/.venv/bin/pip install --no-cache-dir \
         -r /opt/agent-mesh/server/requirements.txt
+
+# Make server dir writable by ansible so uvicorn can create the settings file
+RUN chown ansible:ansible /opt/agent-mesh/server
 
 # Environment
 ENV SPLUNK_START_ARGS="--accept-license"
