@@ -54,11 +54,6 @@ ConfReader ──▶ Orchestrator ──▶ Threat Hunter (agentic event loop)
 - **Progressive UI**: events stream over SSE and paint one at a time into a
   scrollable transcript with inline charts and a persistent status bar.
 
----
-
-## Hackathon Track
-
-Splunk Agentic Ops Hackathon
 
 ---
 
